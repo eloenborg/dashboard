@@ -4,11 +4,13 @@ You build and look after this app for Ebbe. Read this file at the start of every
 
 ## What this is
 
-- A personal dashboard for Ebbe. It starts blank on purpose: "Hello, world." and an Ask Claude box. Ebbe decides what goes on it by asking you.
+- Ebbe's personal "everything app": a Notion-like workspace (pages, lists, records) where the organizing is done by you, not by him. He writes and drops things in; you work out what kind of thing each item is, which fields it needs, what it relates to (across pages), and what state it is in. A wanted item becomes owned, a stocked item runs low, and so on. Then you show it in useful views, kept or one-off. Also a daily brief and a quick-look "today" view, and help with his calendar.
+- Any concrete example Ebbe gives (a hobby collection, a shopping list, a weekend plan) shows a pattern. It is not a feature to build. Build the general pattern.
+- It must have a proper phone layout AND a proper desktop layout.
 - Plain HTML, CSS and JavaScript modules. No build step, no packages, no framework.
 - A PWA: he can add it to his phone's home screen, and it opens offline after one visit.
 - Live at https://eloenborg.github.io/dashboard/ (GitHub Pages). Every push to `main` is checked by `tests/run.mjs` and then published by `.github/workflows/pages.yml`, in about a minute.
-- The repo is **public**. See "Rules for a public repo".
+- The repo is **public**. See "Rules for a public repo" and "Ebbe's data: Google Drive only".
 - It began as a copy of Anna's Stratos family tracker (github.com/annakinz/tracking) with all its screens, its sync and its Gemini agent removed. Pieces worth borrowing back are under "Ready-made pieces".
 
 ## How requests reach you
@@ -58,9 +60,13 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 | `sw.js` | Service worker: fresh files when online, saved copies when offline. |
 | `manifest.webmanifest`, `icon.svg`, `icon-180.png`, `icon-512.png` | Home-screen app name and icons. |
 | `fonts/` | Fraunces (titles) and Outfit (everything else), bundled so the app looks the same offline. |
+| `js/data.js` | His data: items, the device copy (IndexedDB), the outbox and syncing through the gateway. |
+| `gateway/gateway.gs`, `gateway/appsscript.json` | The gateway to his Drive data folder, mail (read) and calendars. Ebbe pastes both into Apps Script. |
+| `tools/data.mjs` | Your door to the data, mail and calendars in a session (Claude key). |
 | `ask-claude/relay.gs` | The relay. Ebbe pastes it into Apps Script; the app does not load it. |
 | `ask-claude/routine-prompt.md` | The prompt of the scheduled task. Kept short; it points here. |
 | `tests/run.mjs` | Required checks, plain Node. Also run by Actions before publishing. |
+| `tests/fake-google.mjs` | A stand-in for Google, so the gateway can be tested in Node. |
 | `tests/browser.mjs` | Optional browser checks (Playwright). |
 | `tools/bump.mjs` | Raises `BUILD`. |
 | `.github/workflows/pages.yml` | Check, then publish, on every push to `main`. |
@@ -72,17 +78,36 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 - **Fresh files.** GitHub Pages sends `Cache-Control: max-age=600`, so a plain browser fetch can be 10 minutes stale. `sw.js` therefore fetches every file of this site with `cache: 'no-cache'` (a cheap revalidation). Requests with a query string, and other sites, bypass the cache. New files need no list: the service worker saves whatever loads.
 - **Escaping.** Put values into `innerHTML` only through `esc()`, and links only through `safeHref()`.
 
-## Data
+## Saved data in the app
 
-- Everything the app keeps goes in `state` (`js/store.js`) and stays in localStorage on that device. There is no server and no sync between his devices yet.
-- Add new top-level fields to `DEFAULTS`, so older saved data still loads. Call `changed()` after edits; screens listen for `dashboard:changed`.
-- localStorage holds about 5 MB. Use IndexedDB for anything big, such as pictures.
-- Keys and passwords for services he connects later get their own localStorage key and a field in Settings, as `js/ask.js` does with the relay. Never put them in `state`: `exportJSON()` would include them.
+- His workspace (pages, records, types, views, briefs) goes through `js/data.js`: `get`, `all(kind)`, `put`, `patch`, `remove`. Screens listen for `dashboard:data` (changes) and `dashboard:sync` (sync status).
+- Small per-device app state (recent Ask Claude messages) is `state` in `js/store.js`, in localStorage. Add new top-level fields to `DEFAULTS`, so older saved data still loads, and call `changed()` after edits; screens listen for `dashboard:changed`.
+- Keys and passwords get their own localStorage key and a field in Settings, as `js/ask.js` (relay) and `js/data.js` (gateway) do. Never put them in `state` or in the workspace.
+
+## Ebbe's data: Google Drive only
+
+THIS IS CRITICAL. Everything Ebbe puts in the app, and everything you work out from it, lives in a private "Dashboard data" folder on his Google Drive. It never goes in this repo or on GitHub in any form: not in code, tests, sample data, file names, commit messages, pull requests or issues.
+
+- **The gateway** (`gateway/gateway.gs`, a Google Apps Script in his account) is the only way in. Google enforces its permissions (`gateway/appsscript.json`): Drive files it created only (the data folder), Gmail read-only, all calendars read-only, and full control only of calendars it created (the "Dashboard" calendar). Do not widen these scopes or switch to `DriveApp`/`GmailApp`/`CalendarApp`; the tests fail if you do. Changing them needs Ebbe's agreement first.
+- **Two keys.** The app key is on his devices and reaches the data only. The Claude key can also read mail and calendars and lives only in the Claude task's environment settings (`DASHBOARD_GATEWAY_URL`, `DASHBOARD_GATEWAY_KEY`).
+- **The format.** One file, `workspace.json`: a flat set of items `{ id, kind, updatedAt, ... }`. The gateway adds `rev`, `by` (`app` or `claude`), `createdAt` and `createdBy`. The newer `updatedAt` wins. A delete is a tombstone `{ id, kind, deleted: true }`. The day's first write saves a backup in `backups/` (kept 30 days).
+- **In your session**, use `node tools/data.mjs` (run it without arguments for help): `pull` writes everything to `~/dashboard-data/workspace.json`, outside the repo. Edit copies of items there and `push` them. `mail-search`, `mail-get`, `calendars` and `events` read. `event-put` and `event-delete` work on the Dashboard calendar only. Never copy data into the repo directory, and delete `~/dashboard-data` when you are done.
+- **Not set up yet?** If `DASHBOARD_GATEWAY_URL` is missing, say so and point Ebbe to README, "Let Claude reach the data". If the gateway can't be reached, the task's cloud environment must allow `script.google.com` and `script.googleusercontent.com` (README, same section). Don't fall back to the claude.ai Google connectors: Ebbe chose not to give them access.
+- **On each device**, the app keeps a copy in IndexedDB so it works offline, and syncs through the gateway (`js/data.js`).
+
+## Generic code, private definitions
+
+The code holds only general building blocks; everything specific is data on Drive.
+
+- In the code: block types (text, heading, list, to-do, …), view archetypes (list, table, board, gallery, checklist, calendar, timeline, chart, comparison, brief, …), field types (text, number, date, money, quantity, status, link to another record, URL, tag, …), and the logic to show and edit them on phone and desktop.
+- On Drive, as items: record types and their fields, records, links between them, pages, and view definitions (which records, filter, grouping, sort, archetype, and for a one-off view its result).
+- When Ebbe asks for a view that no archetype covers, add a new general archetype with a neutral name, and test it with neutral sample data ("Sample item", "Type A"). Then make the specific view as a data item on Drive.
+- Never name his hobbies, people, places, products or anything else from his data in code, tests, sample data, commit messages or PRs. Describe changes in general terms: "Add a comparison view", not what he compared.
 
 ## Rules for a public repo
 
-- Never commit personal data: no family names, addresses, calendars, emails, money, health, photos. Personal data lives on his device (typed into the app, or fetched at run time from his accounts). The code only knows how to show it.
-- Never commit secrets: API keys, tokens, the relay address, the passphrase. `tests/run.mjs` fails on the common kinds.
+- Never commit personal data: no family names, addresses, calendars, emails, money, health, photos, and nothing from his workspace. Personal data lives on his Drive (and in each device's copy). The code only knows how to show it.
+- Never commit secrets: API keys, tokens, the relay address, the passphrase, the gateway address or keys. `tests/run.mjs` fails on the common kinds.
 - When a request would need either in the code, build it so Ebbe enters the value in the app instead, and tell him why in one line.
 
 ## What you can build here
@@ -103,13 +128,13 @@ In your own session, when an Ask Claude message arrives:
 
 Ready-made pieces in github.com/annakinz/tracking (public, same no-build style). Port only what Ebbe asks for, and adapt it: Stratos assumes two people and a household list.
 
-- **Sync between his devices** without a server of his own: `js/hsync.js` and `apps-script.gs`, with the merge in `js/store.js` (`syncSnapshot`, `applySync`). Encrypted on the device with AES-GCM; a Google Drive file holds only ciphertext.
 - **Gemini** (free tier) called from the device: `js/agent.js`.
 - **Automatic local backups** with restore: the backup functions in `js/store.js` and the "local backups" part of Settings in `js/views.js`.
 - **Bubble UI** with pinch-to-size: `js/bubbles.js`. Visual rules of that app: `DESIGN.md`.
 
 ## Set-up status
 
+- The data on Drive needs a one-time setup by Ebbe: README.md, "Set up the data on Google Drive". Until a device is connected, what he adds stays on that device.
 - Ask Claude needs a one-time setup by Ebbe: README.md, "Set up Ask Claude". Until then the box opens the Claude app instead. If he asks for help with it, walk him through one step at a time; the account steps are his to do.
 - Settings shows whether a device is connected. Each device (phone, computer) connects separately.
 
@@ -123,6 +148,8 @@ Ready-made pieces in github.com/annakinz/tracking (public, same no-build style).
   - "no Claude task yet": `FIRE_URL` or `FIRE_TOKEN` is missing in the relay.
   - "Too many messages this hour": the relay allows 20 per hour; Anthropic allows 30 per hour per task.
   - A 400 answer: the trigger API changed. `relay.gs` sends the beta header `experimental-cc-routine-2026-04-01`; check https://platform.claude.com/docs/en/api/claude-code/routines-fire and update `relay.gs`.
+- **Gateway errors:** "Wrong key": copy the key again (running `setup()` in the gateway prints both). "not set up yet": run `setup()`. "Google refused: no permission": the call needs a scope the gateway does not have, and that is on purpose; find another way or ask Ebbe.
+- **You changed `gateway.gs` or `appsscript.json`:** Ebbe must paste the new file into Apps Script and deploy a new version of the same deployment, as with the relay. If the scopes changed, he also runs `setup()` once and approves the new permission screen.
 - **You changed `relay.gs`:** Ebbe must paste the new file into Apps Script and publish it as a new version of the same deployment (Deploy, Manage deployments, edit, Version: New version). The address stays the same.
 - **An Ask Claude run is waiting:** auto mode blocked an action three times in a row and now asks for approval. Ebbe answers in that session in the Claude app.
 - **The fallback link opens Claude without the repo selected:** his Claude GitHub connection does not include `eloenborg/dashboard` (README, step 1).

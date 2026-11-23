@@ -3,6 +3,7 @@
 import { registerServiceWorker } from './update.js';
 import { initHome, renderHome } from './home.js';
 import { initSettings, renderSettings } from './settings.js';
+import { loadData, startSync } from './data.js';
 import { $ } from './ui.js';
 
 const SCREENS = { home: renderHome, settings: renderSettings };
@@ -30,6 +31,7 @@ function init() {
   initSettings();
   show();
   registerServiceWorker();
+  loadData().then(startSync);
 }
 
 init();

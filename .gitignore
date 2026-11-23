@@ -1,5 +1,9 @@
 # The repo is public. Never commit personal data or secrets.
 *-export.json
+# Ebbe's data lives on his Google Drive only, never here
+workspace*.json
+dashboard-data/
+backups/
 *.secret
 .env
 

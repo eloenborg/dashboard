@@ -66,6 +66,27 @@
   </section>
 
   <section class="card">
+    <h2 class="card-title">Data on Google Drive</h2>
+    <p id="setDataState"></p>
+    <label class="field">Gateway address
+      <input id="setGwUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false"
+        placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label class="field">App key
+      <input id="setGwKey" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off">
+    </label>
+    <div class="row">
+      <button id="setGwSave" class="primary" type="button">Save and test</button>
+      <button id="setGwSync" class="quiet" type="button">Sync now</button>
+      <button id="setGwForget" class="quiet" type="button">Forget on this device</button>
+    </div>
+    <p id="setGwResult" class="status" role="status" aria-live="polite"></p>
+    <p class="hint">Your data lives in a private “Dashboard data” folder on your Google Drive, reached only through
+      your own gateway script. This device keeps a copy so the app works offline. The address and key stay on this
+      device only. Setup: <a id="setupDataLink" href="#" target="_blank" rel="noopener">README, “Set up the data on Google Drive”</a>.</p>
+  </section>
+
+  <section class="card">
     <h2 class="card-title">Ask Claude connection</h2>
     <p id="setAskState"></p>
     <label class="field">Relay address
