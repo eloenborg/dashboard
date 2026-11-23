@@ -1,13 +1,17 @@
-// The home screen: "Hello, world." plus the Ask Claude box.
+// Today: the quick look. A greeting, the latest daily brief, pinned pages
+// and views (in #dashboard), recent pages, and the Ask Claude box.
 //
-// This is the blank canvas the dashboard grows from. When Ebbe asks for
-// widgets, they go in #dashboard (index.html), above the Ask Claude box.
+// The brief is an item of kind "brief" that Claude's morning run writes:
+//   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source }] }] }
 
 import { state } from './store.js';
+import * as data from './data.js';
+import { renderView } from './views.js';
+import { titleOf } from './model.js';
 import { BUILD } from './version.js';
 import { ask, isConnected } from './ask.js';
 import { onlineBuild, forceUpdate } from './update.js';
-import { $, esc, clock, dayAndClock, safeHref } from './ui.js';
+import { $, esc, clock, dayAndClock, safeHref, icon, timeAgo } from './ui.js';
 
 const SHOW = 8;                  // past messages listed under the box
 const WATCH_MS = 15 * 60e3;      // after sending, look for a new version this long
@@ -34,12 +38,15 @@ export function initHome() {
     if (item) { box.value = item.text; box.focus(); }
   });
   document.addEventListener('dashboard:changed', renderHistory);
+  document.addEventListener('dashboard:data', () => { if (!$('#screen-home').hidden) renderToday(); });
+  document.addEventListener('dashboard:sync', () => { if (!$('#screen-home').hidden) renderLocalNote(); });
   // coming back to the app (e.g. from the Claude app) is a good moment to look
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
   checkForUpdate();
 }
 
 export function renderHome() {
+  renderToday();
   $('#askMode').textContent = isConnected()
     ? 'Goes straight to Claude.'
     : 'Opens the Claude app with your message filled in. Connect in Settings to skip that step.';
@@ -119,4 +126,76 @@ async function checkForUpdate() {
   } else {
     note.hidden = true;
   }
+}
+
+// ---------------------------------------------------------------- the quick look
+
+function renderToday() {
+  const now = new Date();
+  const h = now.getHours();
+  $('#todayHello').textContent = h < 5 ? 'Good night.' : h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.';
+  $('#todayDate').textContent = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  renderLocalNote();
+  renderBrief();
+  renderPinned();
+  renderRecent();
+}
+
+function renderLocalNote() {
+  const el = $('#localNote');
+  const n = data.all().length;
+  if (!data.isDataConnected() && n) {
+    el.hidden = false;
+    el.innerHTML = 'Saved on this device only. <a href="#settings">Connect Google Drive</a> to keep it safe and use it everywhere.';
+  } else if (data.sync.state === 'error') {
+    el.hidden = false;
+    el.innerHTML = '<span class="bad">Sync problem: ' + esc(data.sync.error) + '</span> <a href="#settings">Settings</a>';
+  } else {
+    el.hidden = true;
+  }
+}
+
+function renderBrief() {
+  const el = $('#briefCard');
+  const briefs = data.all('brief').sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || (b.updatedAt || 0) - (a.updatedAt || 0));
+  const b = briefs[0];
+  if (!b) {
+    el.className = 'brief empty';
+    el.innerHTML = '<h2>Daily brief</h2><p class="muted">Each morning Claude will put a short brief here: mail, calendar and the sites you follow. It starts once the morning task is set up.</p>';
+    return;
+  }
+  const today = new Date().toLocaleDateString('en-CA');
+  const when = b.date === today ? 'Today' : b.date ? new Date(b.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+  el.className = 'brief';
+  el.innerHTML = '<div class="brief-head"><h2>' + esc(b.title || 'Daily brief') + '</h2><span class="muted small">' + esc(when) + '</span></div>' +
+    (b.summary ? '<p class="brief-sum">' + esc(b.summary) + '</p>' : '') +
+    '<div class="brief-sections">' + (b.sections || []).map((s) =>
+      '<section class="brief-sec"><h3>' + esc(s.title || '') + '</h3><ul>' + (s.items || []).map((it) => {
+        const href = safeHref(it.url);
+        const text = esc(it.text || '');
+        return '<li>' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + text + '</a>' : text) +
+          (it.source ? ' <span class="muted small">' + esc(it.source) + '</span>' : '') + '</li>';
+      }).join('') + '</ul></section>').join('') + '</div>';
+}
+
+function renderPinned() {
+  const el = $('#dashboard');
+  const pinned = data.all().filter((it) => it.pinned && (it.kind === 'view' || it.kind === 'page'))
+    .sort((a, b) => (a.pinOrder || 0) - (b.pinOrder || 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
+  if (!pinned.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<h2>Pinned</h2><div class="pins">' + pinned.map((it) => it.kind === 'view'
+    ? '<div class="pin-view card flat"><div data-pin-view="' + esc(it.id) + '"></div></div>'
+    : '<a class="pin-page card flat" href="#p/' + esc(it.id) + '">' + icon('page') + '<span>' + esc(titleOf(it)) + '</span></a>').join('') + '</div>';
+  for (const host of el.querySelectorAll('[data-pin-view]')) renderView(host, host.dataset.pinView, { compact: true, limit: 5 });
+}
+
+function renderRecent() {
+  const el = $('#recentPages');
+  const list = data.all('page').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 6);
+  if (!list.length) {
+    el.innerHTML = '<h2>Pages</h2><p class="muted">No pages yet. <button type="button" class="link" data-new-page>Make your first page</button>, write anything in it, and Claude will organize it.</p>';
+    return;
+  }
+  el.innerHTML = '<h2>Recent pages</h2><ul class="recent">' + list.map((p) => '<li><a href="#p/' + esc(p.id) + '">' + icon('page') +
+    '<span class="r-title">' + esc(titleOf(p)) + '</span><span class="muted small">' + esc(timeAgo(p.updatedAt)) + '</span></a></li>').join('') + '</ul>';
 }

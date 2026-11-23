@@ -9,6 +9,14 @@ On a phone, open it in the browser and add it to the home screen (Safari: Share,
 
 ## How it works
 
+- **Pages** work like Notion: write anything. `# ` makes a heading, `- ` a list, `[] ` a to-do, and `/` shows every kind of block.
+- **Claude organizes.** It works out what kinds of things are on your pages, which details each one needs, and how they connect. Then it shows them as tables, boards, lists, galleries or checklists. Tap an item to see or change everything about it.
+- **Today** shows your daily brief, what you pinned, and your recent pages.
+- **On a computer** there is a sidebar with your pages. **On a phone** there are tabs at the bottom, and items open full screen.
+- To see the views before Claude has organized anything, use **Settings, Try it out**.
+
+To change the app itself:
+
 1. In the app, type what you want in **Ask Claude**: "add a clock", "show today's weather", "what could go here?".
 2. Claude starts at once, in your Claude account. You read the answer in the Claude app on your phone or computer (the app also links to it).
 3. If you asked for a change, Claude publishes it. About a minute later, tap **Force update** in Settings, or **Update now** when the app says a new version is online.

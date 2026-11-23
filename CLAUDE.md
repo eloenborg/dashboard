@@ -15,7 +15,7 @@ You build and look after this app for Ebbe. Read this file at the start of every
 
 ## How requests reach you
 
-1. **The Ask Claude box** on the home screen.
+1. **The Ask Claude box** on Today.
    - Connected (normal): the app posts the message to the relay, a Google Apps Script in Ebbe's Google account (`ask-claude/relay.gs`). The relay starts the scheduled task "Dashboard: Ask Claude" in Ebbe's Claude account through its API trigger. That run is you: the message is in the `routine-fire-payload` block.
    - Not connected yet: the box opens the Claude app with the message already typed, and Ebbe taps send.
    - Either way the message starts with a header line "Ask Claude message from Ebbe, typed into his dashboard" plus the time (Copenhagen), the app version on his device, and the device. His words come after the `---` line.
@@ -46,14 +46,19 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 
 | File | What it is |
 |---|---|
-| `index.html` | Both screens: `#screen-home` and `#screen-settings`. New widgets go in `<section id="dashboard">`. |
-| `style.css` | All styles. Colors are `:root` variables. |
-| `js/app.js` | Startup and screen switching. `#settings` in the address shows Settings. |
-| `js/home.js` | Home: hello text, Ask Claude box, recent messages, "new version is online" note. |
-| `js/settings.js` | Settings: version and Force update; Ask Claude connection (relay address, passphrase, Save and test). |
+| `index.html` | Every screen (`.screen`): Today `#screen-home`, a page, a view, Pages, Search, Settings; the sidebar (computer), top bar and tab bar (phone), the item panel. |
+| `style.css` | All styles. Colors are `:root` variables. Phone below 900px, computer from 900px; views adapt with container queries. |
+| `js/app.js` | The shell: addresses (`#today`, `#p/<id>`, `#r/<id>`, `#v/<id>`, `#pages`, `#search`, `#settings`, `#ask`), the page tree, top bar, tab bar, sidebar, item panel, search. |
+| `js/model.js` | The general building blocks: item kinds, block types, field types, view archetypes; making and finding pages, records and views; filters, sorting, search, backlinks. |
+| `js/editor.js` | The page editor: blocks, Markdown shortcuts, the "/" menu, pasting lines as blocks, block and page menus. |
+| `js/views.js` | View archetypes (table, board, list, gallery, checklist) and one-off `result` views; how values are shown. |
+| `js/record.js` | One item: side panel (computer) or full screen (phone), with an editor per field type. |
+| `js/home.js` | Today: greeting, daily brief, pinned pages and views, recent pages, Ask Claude box, "new version is online" note. |
+| `js/sample.js` | The made-up sample page (Settings, "Try it out"). Neutral on purpose. |
+| `js/settings.js` | Settings: version and Force update; Drive connection; Ask Claude connection; sample. |
 | `js/ask.js` | Ask Claude: the message format, the relay calls, the Claude-app fallback link. |
 | `js/update.js` | Service worker registration, online version check, Force update. |
-| `js/store.js` | Saved data: `state`, `save()`, `changed()`. localStorage key `dashboard.v1`. |
+| `js/store.js` | Small per-device state (`state`, recent Ask Claude messages) and `uid()`. localStorage key `dashboard.v1`. |
 | `js/config.js` | Repo name, owner name, time zone. |
 | `js/version.js` | `BUILD`, the version number. |
 | `js/ui.js` | Helpers: `$`, `esc`, `safeHref`, time formats. |
@@ -74,9 +79,23 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 ## What must keep working
 
 - **Force update.** It is how Ebbe gets your changes. `forceUpdate()` in `js/update.js` deletes the service worker's caches, fetches every file the page used again with `cache: 'reload'`, unregisters the service worker and reloads. Keep Settings and its Force update button reachable even if the home screen is broken.
-- **Ask Claude.** It is how Ebbe reaches you. If you redesign the home screen, keep the box (or a button that opens it) and keep the relay protocol in `js/ask.js` matching `ask-claude/relay.gs`.
+- **Ask Claude.** It is how Ebbe reaches you. If you redesign Today, keep the box (or a button that opens it; the phone's Ask tab and `#ask` go to it) and keep the relay protocol in `js/ask.js` matching `ask-claude/relay.gs`.
+- **Both layouts.** Check every change at phone size (390px) and computer size (1280px). `tests/browser.mjs` drives both.
 - **Fresh files.** GitHub Pages sends `Cache-Control: max-age=600`, so a plain browser fetch can be 10 minutes stale. `sw.js` therefore fetches every file of this site with `cache: 'no-cache'` (a cheap revalidation). Requests with a query string, and other sites, bypass the cache. New files need no list: the service worker saves whatever loads.
 - **Escaping.** Put values into `innerHTML` only through `esc()`, and links only through `safeHref()`.
+
+## The workspace: kinds of items
+
+All in `js/model.js`; this is the contract between the app and your background runs. Every item also has `id`, `kind`, `updatedAt` (see `js/data.js`).
+
+- `page` `{ title, icon, parent, order, pinned, blocks: [{ id, type, text, checked, view, ref }] }`. Block types: `text h1 h2 h3 bullet number todo quote callout code divider`, plus `view` (shows view item `view`), `page` (links to page `ref`) and `record` (links to record `ref`).
+- `type` `{ name, plural, icon, titleLabel, fields: [{ key, label, type, options, to, unit, currency }] }`. Field types: `text number quantity money date status select tags checkbox rating url link image`. `status`/`select` options are strings or `{ key, label, color }` (green, amber, red, blue, grey, purple). `link` fields point at records (of type `to`). Money is `{ amount, currency }`.
+- `record` `{ type, title, values: { key: value }, links: [{ to, rel }], notes }`. Use `links` for relations that are not a field.
+- `view` `{ title, archetype, source: { type, filter: [{ field, op, value }], sort: [{ field, dir }], group }, show: [keys], keep, page, pinned, result }`. Archetypes: `table board list gallery checklist`. Filter ops: `is not in has empty notEmpty lt gt contains`. A one-off view has `keep: false`; a researched one carries `result: { columns: [{ key, label, type }], rows: [{...}], note, sources: [{ title, url }], at }` instead of a record source (column type `url` links out, `ref` links to an item).
+- `brief` `{ date: 'YYYY-MM-DD', title, summary, sections: [{ title, items: [{ text, url, source }] }] }`. Today shows the newest.
+- `pinned: true` on a page or view puts it on Today.
+
+When you organize his data: make a `type` per kind of thing, with the fields it needs and status options for its states; turn loose lines on his pages into `record`s (keep his words in `title` and `notes`); link related records; add `view`s and put `view` blocks on the pages where the items came from, so his page still reads well. Don't delete his writing unless it is now fully shown by a view on the same page.
 
 ## Saved data in the app
 
@@ -124,7 +143,7 @@ In the app (it runs in his browser, only while open):
 In your own session, when an Ask Claude message arrives:
 
 - Web search and web fetch, this repo, Node.
-- The claude.ai connectors in Ebbe's account (for example Google Calendar or Gmail) if he left them switched on in the scheduled task. Good for answering questions in the session; the app itself cannot use them.
+- His data, mail (read only) and calendars through `node tools/data.mjs` (see "Ebbe's data: Google Drive only"). Not the claude.ai Google connectors: Ebbe chose not to give those access.
 
 Ready-made pieces in github.com/annakinz/tracking (public, same no-build style). Port only what Ebbe asks for, and adapt it: Stratos assumes two people and a household list.
 

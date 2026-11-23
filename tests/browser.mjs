@@ -6,14 +6,16 @@
 //
 // The local server answers like GitHub Pages (Cache-Control: max-age=600 and
 // ETags), so the update checks below meet the same browser caching as on the
-// live site. The Ask Claude relay is faked inside the browser; nothing leaves
-// this machine.
+// live site. The Ask Claude relay and the Drive gateway are faked (the
+// gateway is the real gateway/gateway.gs running against a fake Google);
+// nothing leaves this machine. Only neutral sample data.
 
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 let chromium, devices;
 try {
@@ -75,9 +77,9 @@ await phone.route('https://script.google.com/**', fakeRelay);
 const page = await phone.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 
-await check('the home screen says hello and offers Ask Claude', async () => {
+await check('the home screen (Today) greets and offers Ask Claude', async () => {
   await page.goto(BASE);
-  await page.waitForSelector('text=Hello, world.');
+  await page.waitForFunction(() => /^Good /.test(document.querySelector('#todayHello').textContent));
   const mode = await page.textContent('#askMode');
   must(/Opens the Claude app/.test(mode), 'not-connected hint: ' + mode);
 });
@@ -106,7 +108,7 @@ await check('Save and test: the right passphrase connects', async () => {
 });
 
 await check('Ask Claude sends the message and links to the Claude session', async () => {
-  await page.click('#brand');
+  await page.click('[data-tab="today"]');
   await page.waitForSelector('#screen-home:not([hidden])');
   must(/straight to Claude/.test(await page.textContent('#askMode')), 'connected hint');
   await page.fill('#askText', 'Add a clock');
@@ -132,12 +134,13 @@ await check('a refused message stays recoverable', async () => {
 });
 
 await check('the app opens offline after one visit', async () => {
+  await page.evaluate(() => { location.hash = '#today'; });
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();                       // now controlled by the service worker
-  await page.waitForSelector('text=Hello, world.');
+  await page.waitForSelector('#askText');
   await phone.setOffline(true);
   await page.reload();
-  await page.waitForSelector('text=Hello, world.');
+  await page.waitForSelector('#askText');
   await phone.setOffline(false);
 });
 
@@ -152,7 +155,7 @@ await check('a newer version online shows the note, and Update now loads it', as
     await page.waitForSelector('#updateNote:not([hidden])', { timeout: 10000 });
     must(new RegExp('v' + (BUILD + 1)).test(await page.textContent('#updateText')), await page.textContent('#updateText'));
     await Promise.all([page.waitForEvent('load'), page.click('#updateNow')]);
-    await page.waitForSelector('text=Hello, world.');
+    await page.waitForSelector('#askText');
     await page.evaluate(() => { location.hash = '#settings'; });
     await page.waitForSelector('#screen-settings:not([hidden])');
     const shown = await page.textContent('#setBuild');
@@ -189,6 +192,184 @@ await check('not connected: Ask Claude opens Claude Code with the message and re
   must(url.origin === 'https://claude.ai' && url.pathname === '/code/new', 'opened ' + tab.url().slice(0, 60));
   must(url.searchParams.get('repo') && url.searchParams.get('q').endsWith('What can you add here?'), 'params');
   must(/Opened in Claude/.test(await dpage.textContent('#askStatus')), 'status');
+});
+
+// ---------- the workspace on a computer ----------
+const work = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+const { loadGateway } = await import(pathToFileURL(join(ROOT, 'tests/fake-google.mjs')).href);
+const gw = loadGateway(join(ROOT, 'gateway/gateway.gs'));
+gw.g.setup();
+const GATEWAY = 'https://script.google.com/macros/s/TESTGATEWAY/exec';
+await work.route(GATEWAY, async (route) => {
+  const out = gw.post(JSON.parse(route.request().postData() || '{}'));
+  await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(out) });
+});
+const w = await work.newPage();
+w.on('pageerror', (e) => errors.push(e.message));
+const typeIn = async (text) => { for (const ch of text) await w.keyboard.type(ch); };
+const blockTypes = () => w.$$eval('#pageView .block', (els) => els.map((b) => [...b.classList].find((c) => c.startsWith('b-')).slice(2)));
+const blockTexts = () => w.$$eval('#pageView .block .bt', (els) => els.map((b) => b.innerText.replace(/\n$/, '')));
+
+await check('desktop: a sidebar with Today, Search and pages; no phone bars', async () => {
+  await w.goto(BASE);
+  await w.waitForSelector('#sidebar', { state: 'visible' });
+  must(!(await w.isVisible('#tabbar')) && !(await w.isVisible('#topbar')), 'phone bars should be hidden on a computer');
+});
+
+await check('a new page: title, then Enter to write; Markdown shortcuts make lists, to-dos and headings', async () => {
+  await w.click('#sideNewPage');
+  await w.waitForSelector('#screen-page:not([hidden]) .page-title');
+  must(await w.evaluate(() => document.activeElement.classList.contains('page-title')), 'the title should have the cursor');
+  await typeIn('Test page');
+  await w.keyboard.press('Enter');
+  await typeIn('First line');
+  await w.keyboard.press('Enter');
+  await typeIn('- one');
+  await w.keyboard.press('Enter');
+  await typeIn('two');
+  await w.keyboard.press('Enter');
+  await w.keyboard.press('Enter');          // an empty list item ends the list
+  await typeIn('[] tick me');
+  await w.keyboard.press('Enter');
+  await w.keyboard.press('Enter');
+  await typeIn('## Section');
+  const types = await blockTypes();
+  must(JSON.stringify(types) === JSON.stringify(['text', 'bullet', 'bullet', 'todo', 'h2']), 'blocks: ' + types);
+  must(JSON.stringify(await blockTexts()) === JSON.stringify(['First line', 'one', 'two', 'tick me', 'Section']), 'texts: ' + await blockTexts());
+  await w.waitForFunction(() => /Test page/.test(document.querySelector('#pageTree').textContent), null, { timeout: 3000 });
+});
+
+await check('Backspace at the start joins blocks; the "/" menu turns a block into a quote', async () => {
+  await w.keyboard.press('Enter');
+  await typeIn('/quo');
+  await w.waitForSelector('#menu:not([hidden]) .menu-item');
+  await w.keyboard.press('Enter');
+  await typeIn('Quoted');
+  must((await blockTypes()).at(-1) === 'quote', 'last block should be a quote: ' + await blockTypes());
+  must((await blockTexts()).at(-1) === 'Quoted', 'the "/quo" text should be gone: ' + await blockTexts());
+  await w.keyboard.press('Home');
+  await w.keyboard.press('Backspace');      // quote -> text
+  await w.keyboard.press('Backspace');      // join with the heading above
+  must((await blockTexts()).at(-1) === 'SectionQuoted', 'join: ' + await blockTexts());
+});
+
+await check('pasting several lines makes several blocks', async () => {
+  await w.keyboard.press('End');
+  await w.keyboard.press('Enter');
+  await w.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'pasted a\n- pasted b\n[x] pasted c');
+    document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const types = await blockTypes();
+  must(JSON.stringify(types.slice(-3)) === JSON.stringify(['text', 'bullet', 'todo']), 'pasted types: ' + types);
+  must(await w.$eval('#pageView .block:last-child input[data-todo]', (el) => el.checked), '[x] should be ticked');
+});
+
+await check('pages are kept on the device and come back after a reload', async () => {
+  await w.waitForTimeout(800);              // the editor saves shortly after typing
+  await w.reload();
+  await w.waitForSelector('#pageView .page-title');
+  must((await w.textContent('#pageView .page-title')) === 'Test page', 'title after reload');
+  must((await blockTexts()).includes('tick me'), 'blocks after reload: ' + await blockTexts());
+});
+
+await check('the sample page shows a table; an item opens in a side panel and changes there show everywhere', async () => {
+  await w.evaluate(() => { location.hash = '#settings'; });
+  await w.click('#setSampleAdd');
+  await w.waitForSelector('.view.arch-table .tbl tbody tr');
+  must(await w.isVisible('.view.arch-board .col'), 'board');
+  await w.click('.view.arch-table .tbl tbody tr:first-child');
+  await w.waitForSelector('#panel:not([hidden]) .rec-title');
+  must(await w.isVisible('#screen-page'), 'the page stays visible beside the panel on a computer');
+  await w.selectOption('#panel select[data-f="status"]', 'gone');
+  await w.waitForTimeout(150);
+  const firstRowStatus = await w.textContent('.view.arch-table .tbl tbody tr:first-child');
+  must(/Used up/.test(firstRowStatus), 'the table should show the new status: ' + firstRowStatus);
+  await w.keyboard.press('Escape');
+  await w.waitForSelector('#panel', { state: 'hidden' });
+});
+
+await check('a view switches between table, board, list, gallery and checklist', async () => {
+  const host = '.view[data-view]:first-of-type';
+  for (const arch of ['board', 'list', 'gallery', 'checklist', 'table']) {
+    await w.click('#pageView .view >> nth=0 >> [data-arch="' + arch + '"]');
+    await w.waitForSelector('#pageView .view.arch-' + arch);
+  }
+});
+
+await check('search finds pages and items', async () => {
+  await w.keyboard.press('Control+k');
+  await w.waitForSelector('#screen-search:not([hidden])');
+  await w.fill('#searchInput', 'item c');
+  await w.waitForTimeout(100);
+  must(/Item C/.test(await w.textContent('#searchResults')), 'item c: ' + (await w.textContent('#searchResults')).slice(0, 200));
+  await w.fill('#searchInput', 'tick me');
+  await w.waitForTimeout(100);
+  must(/Test page/.test(await w.textContent('#searchResults')), 'tick me: ' + (await w.textContent('#searchResults')).slice(0, 200) + ' hash ' + await w.evaluate(() => location.hash));
+});
+
+await check('connecting Google Drive sends everything there, and Claude\'s changes come back', async () => {
+  await w.evaluate(() => { location.hash = '#settings'; });
+  await w.fill('#setGwUrl', GATEWAY);
+  await w.fill('#setGwKey', gw.props.get('CLAUDE_KEY'));
+  await w.click('#setGwSave');
+  await w.waitForFunction(() => /Claude key/.test(document.querySelector('#setGwResult').textContent));
+  await w.fill('#setGwUrl', GATEWAY);
+  await w.fill('#setGwKey', gw.props.get('APP_KEY'));
+  await w.click('#setGwSave');
+  await w.waitForFunction(() => /^Connected/.test(document.querySelector('#setGwResult').textContent));
+  await w.waitForFunction(() => /Last synced/.test(document.querySelector('#setDataState').textContent), null, { timeout: 8000 });
+  const ws = gw.workspace();
+  const pages = Object.values(ws.items).filter((it) => it.kind === 'page' && !it.deleted).map((p) => p.title);
+  must(pages.includes('Test page') && pages.includes('Sample collection'), 'pages on Drive: ' + pages);
+  // Claude renames an item; the app shows it after the next sync
+  const rec = Object.values(ws.items).find((it) => it.kind === 'record' && it.title === 'Item B');
+  gw.post({ action: 'push', key: gw.props.get('CLAUDE_KEY'), items: [{ ...rec, title: 'Item B (tidied)', updatedAt: Date.now() + 1000 }] });
+  await w.click('#setGwSync');
+  await w.evaluate(() => { location.hash = '#search'; });
+  await w.fill('#searchInput', 'tidied');
+  await w.waitForFunction(() => /Item B \(tidied\)/.test(document.querySelector('#searchResults').textContent), null, { timeout: 8000 });
+  must(/Saved to Drive/.test(await w.textContent('#sideSync')), 'sync status: ' + await w.textContent('#sideSync'));
+});
+
+await check('a visitor without a key sees an empty app', async () => {
+  const stranger = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+  const s = await stranger.newPage();
+  await s.goto(BASE);
+  await s.waitForSelector('#recentPages');
+  must(/No pages yet/.test(await s.textContent('#recentPages')), 'should have no pages');
+  must(!/Test page|Item B/.test(await s.content()), 'must show none of the data');
+  await stranger.close();
+});
+
+// ---------- the workspace on a phone ----------
+const ph = await browser.newContext({ ...devices['iPhone 13'] });
+const p2 = await ph.newPage();
+p2.on('pageerror', (e) => errors.push(e.message));
+
+await check('phone: tab bar, Pages tab, an item opens full screen and closes again', async () => {
+  await p2.goto(BASE + '#settings');
+  await p2.click('#setSampleAdd');
+  await p2.waitForSelector('#pageView .tbl tbody tr');
+  must(!(await p2.isVisible('#sidebar')) && await p2.isVisible('#tabbar'), 'phone layout');
+  await p2.click('[data-tab="pages"]');
+  await p2.waitForSelector('#screen-pages:not([hidden]) .t-link');
+  await p2.click('#pagesList .t-link');
+  await p2.waitForSelector('#screen-page:not([hidden]) .tbl tbody tr');
+  await p2.click('#pageView .tbl tbody tr >> nth=0');
+  await p2.waitForSelector('#panel:not([hidden])');
+  const box = await p2.$eval('#panel', (el) => { const r = el.getBoundingClientRect(); return [r.left, r.width, innerWidth]; });
+  must(box[0] === 0 && box[1] === box[2], 'the item should fill the screen: ' + box);
+  await p2.click('#panel [data-close]');
+  await p2.waitForSelector('#panel', { state: 'hidden' });
+  await p2.click('#backBtn');
+  await p2.waitForSelector('#screen-pages:not([hidden])');
+});
+
+await check('phone: the Ask tab goes to the Ask Claude box', async () => {
+  await p2.click('[data-tab="ask"]');
+  await p2.waitForFunction(() => document.activeElement && document.activeElement.id === 'askText');
 });
 
 await check('no script errors on any page', () => {

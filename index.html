@@ -16,13 +16,44 @@
 </head>
 <body>
 
+<!-- ============ DESKTOP SIDEBAR ============ -->
+<aside id="sidebar" aria-label="Pages">
+  <div class="side-top">
+    <button id="sideBrand" class="brand" type="button">Dashboard</button>
+  </div>
+  <button id="sideSearch" class="side-item" type="button" data-go="#search">
+    <span class="ico" data-icon="search"></span><span>Search</span><kbd id="searchKbd">⌘K</kbd>
+  </button>
+  <button id="sideToday" class="side-item" type="button" data-go="#today">
+    <span class="ico" data-icon="today"></span><span>Today</span>
+  </button>
+  <button id="sideAsk" class="side-item" type="button" data-go="#ask">
+    <span class="ico" data-icon="ask"></span><span>Ask Claude</span>
+  </button>
+  <div class="side-section">
+    <span>Pages</span>
+    <button id="sideNewPage" class="iconbtn sm" type="button" aria-label="New page" title="New page">+</button>
+  </div>
+  <nav id="pageTree" class="tree"></nav>
+  <div class="side-foot">
+    <span id="sideSync" class="sync" role="status"></span>
+    <button id="sideSettings" class="iconbtn" type="button" aria-label="Settings" title="Settings" data-go="#settings">⚙︎</button>
+  </div>
+</aside>
+
+<!-- ============ PHONE TOP BAR ============ -->
 <header id="topbar">
+  <button id="backBtn" class="iconbtn" type="button" aria-label="Back" hidden>‹</button>
   <button id="brand" class="brand" type="button">Dashboard</button>
+  <div id="topTitle" class="top-title" hidden></div>
   <div class="spacer"></div>
+  <span id="topSync" class="sync dot-only" role="status"></span>
   <button id="settingsBtn" class="iconbtn" type="button" aria-label="Settings" aria-pressed="false">⚙︎</button>
 </header>
 
-<!-- ============ HOME ============ -->
+<div id="main">
+
+<!-- ============ TODAY ============ -->
 <main id="screen-home" class="screen">
 
   <p id="updateNote" class="update-note" hidden>
@@ -30,17 +61,23 @@
     <button id="updateNow" class="primary small" type="button">Update now</button>
   </p>
 
-  <section class="hello">
-    <h1>Hello, world.</h1>
-    <p>This dashboard is blank on purpose. Ask Claude to add the first thing.</p>
+  <section class="today-head">
+    <h1 id="todayHello">Hello.</h1>
+    <p id="todayDate" class="muted"></p>
   </section>
 
-  <!-- Widgets Claude builds go here. -->
+  <section id="localNote" class="note-line" hidden></section>
+
+  <section id="briefCard" class="brief"></section>
+
+  <!-- Pinned pages and views: the quick look. -->
   <section id="dashboard"></section>
 
-  <section class="card ask">
+  <section id="recentPages"></section>
+
+  <section id="askCard" class="card ask">
     <label for="askText" class="card-title">Ask Claude</label>
-    <textarea id="askText" rows="3" placeholder="For example: add a clock and today's weather for Copenhagen"
+    <textarea id="askText" rows="3" placeholder="Ask for a change, a view of your data, or anything else"
       autocapitalize="sentences"></textarea>
     <div class="row">
       <button id="askSend" class="primary" type="button">Ask Claude</button>
@@ -50,6 +87,33 @@
   </section>
 
   <section id="askHistory" class="history"></section>
+</main>
+
+<!-- ============ A PAGE ============ -->
+<main id="screen-page" class="screen wide" hidden>
+  <nav id="pageCrumbs" class="crumbs"></nav>
+  <article id="pageView"></article>
+</main>
+
+<!-- ============ A VIEW ON ITS OWN ============ -->
+<main id="screen-view" class="screen wide" hidden>
+  <article id="viewView"></article>
+</main>
+
+<!-- ============ ALL PAGES (phone) ============ -->
+<main id="screen-pages" class="screen" hidden>
+  <h1>Pages</h1>
+  <nav id="pagesList" class="tree big"></nav>
+  <div class="row">
+    <button id="pagesNew" class="primary" type="button">+ New page</button>
+  </div>
+</main>
+
+<!-- ============ SEARCH ============ -->
+<main id="screen-search" class="screen" hidden>
+  <h1>Search</h1>
+  <input id="searchInput" type="search" placeholder="Search pages, items and views" autocapitalize="none" autocomplete="off" enterkeyhint="search">
+  <div id="searchResults" class="results"></div>
 </main>
 
 <!-- ============ SETTINGS ============ -->
@@ -106,8 +170,37 @@
       The address and passphrase stay on this device only.</p>
   </section>
 
+  <section class="card">
+    <h2 class="card-title">Try it out</h2>
+    <p>Adds a small sample page with made-up items, to see the tables, boards and other views before Claude has organized anything of yours.</p>
+    <div class="row">
+      <button id="setSampleAdd" class="primary" type="button">Add sample page</button>
+      <button id="setSampleRemove" class="quiet" type="button">Remove sample</button>
+    </div>
+    <p id="setSampleResult" class="status" role="status" aria-live="polite"></p>
+  </section>
+
   <p id="setStorage" class="status bad" hidden>This device's storage is full, so changes are not being saved.</p>
 </main>
+
+</div>
+
+<!-- ============ RECORD PANEL (side panel on desktop, full screen on phone) ============ -->
+<aside id="panel" aria-label="Item" hidden>
+  <div id="panelBody"></div>
+</aside>
+
+<!-- ============ PHONE TAB BAR ============ -->
+<nav id="tabbar" aria-label="Main">
+  <button class="tab" type="button" data-tab="today" data-go="#today"><span class="ico" data-icon="today"></span><span>Today</span></button>
+  <button class="tab" type="button" data-tab="pages" data-go="#pages"><span class="ico" data-icon="pages"></span><span>Pages</span></button>
+  <button class="tab" type="button" data-tab="search" data-go="#search"><span class="ico" data-icon="search"></span><span>Search</span></button>
+  <button class="tab" type="button" data-tab="ask" data-go="#ask"><span class="ico" data-icon="ask"></span><span>Ask</span></button>
+</nav>
+
+<!-- Pop-up menus (slash commands, block and page menus) -->
+<div id="menu" class="menu" role="menu" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <script type="module" src="js/app.js"></script>
 </body>

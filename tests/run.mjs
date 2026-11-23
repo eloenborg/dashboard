@@ -407,6 +407,50 @@ await check('tools/data.mjs (Claude\'s door) pushes and pulls through the gatewa
   }
 });
 
+// ---------- the general model (js/model.js), with neutral sample data ----------
+
+const model = await import(pathToFileURL(join(ROOT, 'js/model.js')).href);
+const sample = await import(pathToFileURL(join(ROOT, 'js/sample.js')).href);
+
+await check('model: views filter, sort and group records of a type; search finds pages and items', async () => {
+  data._reset();
+  await data.loadData();
+  data.setGatewayConfig({});
+  const pageId = sample.addSample();
+  must(pageId && !sample.addSample(), 'the sample is added once');
+  const views = data.all('view');
+  const wanted = views.find((v) => v.source.filter.length);
+  const rows = model.viewRecords(wanted);
+  must(rows.length === 2 && rows.every((r) => r.values.status === 'wanted'), 'filter: ' + rows.map((r) => r.title));
+  must(rows[0].values.price.amount <= rows[1].values.price.amount, 'sorted by price');
+  must(model.search('item c')[0].item.title === 'Item C', 'search for an item');
+  must(model.search('try typing').some((h) => h.item.id === pageId), 'search in page text');
+  const b = data.all('record').find((r) => r.title === 'Item B');
+  must(model.backlinks(b.id).some((x) => x.item.title === 'Item C'), 'Item C links to Item B');
+  const t = data.get(b.type);
+  must(model.formatPlain(t.fields.find((f) => f.key === 'status'), 'low') === 'Running low', 'option labels');
+  must(/4[.,]50/.test(model.formatPlain(t.fields.find((f) => f.key === 'price'), { amount: 4.5, currency: 'EUR' })), 'money');
+  must(model.matches(b, { field: 'qty', op: 'gt', value: 1 }) && !model.matches(b, { field: 'qty', op: 'lt', value: 1 }), 'numbers');
+});
+
+await check('model: pages form a tree; a page whose parent is gone is still shown at the top', async () => {
+  const top = model.newPage({ title: 'Top' });
+  const kid = model.newPage({ title: 'Kid', parent: top.id });
+  const grand = model.newPage({ title: 'Grandkid', parent: kid.id });
+  must(model.childPages(top.id).map((p) => p.id).join() === kid.id, 'children');
+  must(model.ancestors(grand).map((p) => p.title).join('/') === 'Top/Kid', 'ancestors');
+  must(model.descendants(top.id).length === 2, 'descendants');
+  data.remove(kid.id);
+  must(model.topPages().some((p) => p.id === grand.id), 'orphan shows at the top');
+});
+
+await check('model: "Remove sample" removes exactly the sample, nothing else', async () => {
+  const keep = model.newPage({ title: 'Mine' });
+  const n = sample.removeSample();
+  must(n > 0 && !data.all().some((it) => it.sample), 'sample gone');
+  must(data.get(keep.id), 'other pages stay');
+});
+
 await check('Ebbe\'s data never sits in the repo (no workspace or backup files)', () => {
   const bad = allFiles().filter((f) => /(^|\/)(workspace[^/]*\.json|backups?\/|dashboard-data\/)/i.test(f));
   must(!bad.length, 'remove these and keep data on Drive only: ' + bad.join(', '));

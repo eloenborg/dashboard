@@ -2,6 +2,7 @@
 
 import { storageFull } from './store.js';
 import * as data from './data.js';
+import { addSample, removeSample } from './sample.js';
 import { BUILD } from './version.js';
 import { onlineBuild, forceUpdate } from './update.js';
 import { askConfig, setAskConfig, isConnected, testConnection } from './ask.js';
@@ -33,6 +34,16 @@ export function initSettings() {
     $('#setGwResult').textContent = 'Disconnected, and this device\'s copy is removed.';
   });
   document.addEventListener('dashboard:sync', renderDataState);
+
+  $('#setSampleAdd').addEventListener('click', () => {
+    const id = addSample();
+    if (id) location.hash = '#p/' + id;
+    else $('#setSampleResult').textContent = 'The sample page is already there. Look for “Sample collection” in your pages.';
+  });
+  $('#setSampleRemove').addEventListener('click', () => {
+    const n = removeSample();
+    $('#setSampleResult').textContent = n ? 'Removed the sample page and its made-up items.' : 'There is no sample to remove.';
+  });
 }
 
 export function dataStateText() {
@@ -115,7 +126,8 @@ export function renderSettings() {
   $('#setAskResult').textContent = '';
   $('#setAskResult').className = 'status';
 
-  $('#setStorage').hidden = !storageFull;
+  $('#setStorage').hidden = !storageFull && !data.deviceCopyFailed;
+  $('#setSampleResult').textContent = '';
 }
 
 async function saveAndTest() {
