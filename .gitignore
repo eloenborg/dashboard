@@ -1,0 +1,7 @@
+# The repo is public. Never commit personal data or secrets.
+*-export.json
+*.secret
+.env
+
+node_modules
+.DS_Store

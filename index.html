@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBFBF7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dashboard">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Dashboard</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <button id="brand" class="brand" type="button">Dashboard</button>
+  <div class="spacer"></div>
+  <button id="settingsBtn" class="iconbtn" type="button" aria-label="Settings" aria-pressed="false">⚙︎</button>
+</header>
+
+<!-- ============ HOME ============ -->
+<main id="screen-home" class="screen">
+
+  <p id="updateNote" class="update-note" hidden>
+    <span id="updateText"></span>
+    <button id="updateNow" class="primary small" type="button">Update now</button>
+  </p>
+
+  <section class="hello">
+    <h1>Hello, world.</h1>
+    <p>This dashboard is blank on purpose. Ask Claude to add the first thing.</p>
+  </section>
+
+  <!-- Widgets Claude builds go here. -->
+  <section id="dashboard"></section>
+
+  <section class="card ask">
+    <label for="askText" class="card-title">Ask Claude</label>
+    <textarea id="askText" rows="3" placeholder="For example: add a clock and today's weather for Copenhagen"
+      autocapitalize="sentences"></textarea>
+    <div class="row">
+      <button id="askSend" class="primary" type="button">Ask Claude</button>
+      <span id="askMode" class="hint"></span>
+    </div>
+    <p id="askStatus" class="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="askHistory" class="history"></section>
+</main>
+
+<!-- ============ SETTINGS ============ -->
+<main id="screen-settings" class="screen" hidden>
+  <h1>Settings</h1>
+
+  <section class="card">
+    <h2 class="card-title">Version</h2>
+    <p>This device runs <b id="setBuild"></b>. <span id="setOnline"></span></p>
+    <div class="row">
+      <button id="setForce" class="primary" type="button">↻ Force update</button>
+    </div>
+    <p class="hint">Force update throws away this device's saved copy of the app and loads the newest one from the web. Your data stays.</p>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Ask Claude connection</h2>
+    <p id="setAskState"></p>
+    <label class="field">Relay address
+      <input id="setRelayUrl" type="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false"
+        placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label class="field">Passphrase
+      <input id="setRelayPass" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off">
+    </label>
+    <div class="row">
+      <button id="setAskSave" class="primary" type="button">Save and test</button>
+      <button id="setAskForget" class="quiet" type="button">Forget on this device</button>
+    </div>
+    <p id="setAskResult" class="status" role="status" aria-live="polite"></p>
+    <p class="hint">Setting this up takes about 10 minutes, once. The steps are in the
+      <a id="setupLink" href="#" target="_blank" rel="noopener">README, under “Set up Ask Claude”</a>.
+      The address and passphrase stay on this device only.</p>
+  </section>
+
+  <p id="setStorage" class="status bad" hidden>This device's storage is full, so changes are not being saved.</p>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
