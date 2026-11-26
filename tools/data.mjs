@@ -14,6 +14,7 @@
 //   node tools/data.mjs ping
 //   node tools/data.mjs pull                     all items -> $DIR/workspace.json, prints a summary
 //   node tools/data.mjs push FILE                FILE: a JSON list of whole items (or { "items": [...] })
+//   node tools/data.mjs file-get ID              a picture sent with an Ask Claude message -> $DIR/files/, prints its path
 //   node tools/data.mjs mail-search "QUERY" [MAX]   Gmail search syntax, e.g. "newer_than:1d"
 //   node tools/data.mjs mail-get ID
 //   node tools/data.mjs calendars
@@ -126,6 +127,18 @@ switch (cmd) {
     }
     const refused = items.filter((it) => !j.accepted.includes(it.id)).map((it) => it.id);
     print({ rev: j.rev, accepted: j.accepted.length, refusedBecauseNewerOnDrive: refused });
+    break;
+  }
+
+  case 'file-get': {
+    if (!a1) fail('file-get needs the picture\'s id (it is in the Ask Claude message).');
+    const { file } = await call({ action: 'fileGet', id: a1 });
+    const ext = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic', 'image/heif': '.heif' }[file.mimeType] || '';
+    const dir = join(DIR, 'files');
+    mkdirSync(dir, { recursive: true });
+    const out = join(dir, String(file.id).replace(/[^\w-]/g, '_') + ext);
+    writeFileSync(out, Buffer.from(file.data, 'base64'));
+    print({ wrote: out, name: file.name, mimeType: file.mimeType, size: file.size });
     break;
   }
 

@@ -28,6 +28,10 @@
  * for "everything since revision N". The day's first write also saves a copy
  * in the backups folder (kept 30 days).
  *
+ * Pictures sent with an Ask Claude message are saved as files in the
+ * "Ask Claude pictures" folder inside the data folder (kept 60 days). The
+ * app may only add them; only the Claude key may read them back.
+ *
  * Setup: README.md, "Set up the data on Google Drive".
  * Nothing in this file is secret. The keys live in Script Properties.
  */
@@ -39,6 +43,9 @@ var TIME_ZONE = 'Europe/Copenhagen';
 var KEEP_BACKUP_DAYS = 30;
 var MAX_ITEM_BYTES = 1000000;
 var MAX_PER_HOUR = 1200;
+var FILES_FOLDER_NAME = 'Ask Claude pictures';
+var MAX_FILE_BYTES = 8000000;
+var KEEP_FILE_DAYS = 60;
 
 var DRIVE = 'https://www.googleapis.com/drive/v3';
 var DRIVE_UP = 'https://www.googleapis.com/upload/drive/v3';
@@ -47,8 +54,8 @@ var CAL = 'https://www.googleapis.com/calendar/v3';
 
 // Which actions each key may use.
 var ALLOWED = {
-  app: ['ping', 'pull', 'push'],
-  claude: ['ping', 'pull', 'push', 'mailSearch', 'mailGet', 'calendars', 'events',
+  app: ['ping', 'pull', 'push', 'filePut'],
+  claude: ['ping', 'pull', 'push', 'filePut', 'fileGet', 'mailSearch', 'mailGet', 'calendars', 'events',
            'calendarSetup', 'eventPut', 'eventDelete']
 };
 
@@ -115,6 +122,36 @@ var ACTIONS = {
     } finally {
       lock.releaseLock();
     }
+  },
+
+  // { name, mimeType, data (base64) } -> { file: { id, name, mimeType, size } }
+  // Saves a picture in the pictures folder. Old pictures are cleared out.
+  filePut: function (body) {
+    var mime = String(body.mimeType || '');
+    if (!/^image\/(png|jpeg|webp|gif|heic|heif)$/.test(mime)) throw new Error('Only pictures (PNG, JPEG, WebP, GIF, HEIC) can be saved.');
+    var bytes;
+    try { bytes = Utilities.base64Decode(String(body.data || '')); } catch (e) { throw new Error('The picture could not be read.'); }
+    if (!bytes.length) throw new Error('The picture was empty.');
+    if (bytes.length > MAX_FILE_BYTES) throw new Error('That picture is too big (' + Math.round(bytes.length / 1e6) + ' MB; the limit is 8 MB).');
+    var name = String(body.name || 'picture').replace(/[^\w .()-]+/g, '_').slice(0, 80) || 'picture';
+    var folder = filesFolder_();
+    var made = api_('post', DRIVE + '/files?fields=id', { name: name, mimeType: mime, parents: [folder] });
+    api_('patch', DRIVE_UP + '/files/' + made.id + '?uploadType=media', bytes, mime);
+    clearOldFiles_(folder);
+    return { file: { id: made.id, name: name, mimeType: mime, size: bytes.length } };
+  },
+
+  // { id } -> { file: { id, name, mimeType, size, data (base64) } }
+  // Only for files in the pictures folder.
+  fileGet: function (body) {
+    var id = String(body.id || '');
+    if (!/^[\w-]{1,128}$/.test(id)) throw new Error('fileGet needs a file id.');
+    var meta = api_('get', DRIVE + '/files/' + id + '?fields=id,name,mimeType,parents,trashed', null, null, true);
+    if (!meta || meta.trashed || (meta.parents || []).indexOf(filesFolder_()) < 0) throw new Error('No such picture (it may be older than ' + KEEP_FILE_DAYS + ' days).');
+    var res = UrlFetchApp.fetchAll([request_('get', DRIVE + '/files/' + id + '?alt=media')])[0];
+    if (res.getResponseCode() >= 300) parse_(res);
+    var bytes = res.getContent();
+    return { file: { id: id, name: meta.name, mimeType: meta.mimeType, size: bytes.length, data: Utilities.base64Encode(bytes) } };
   },
 
   // { q, max } -> { messages: [{ id, threadId, from, to, subject, date, snippet, labels }] }
@@ -377,6 +414,34 @@ function backupOncePerDay_() {
   p.setProperty('BACKUP_DAY', day);
 }
 
+function filesFolder_() {
+  var p = props_();
+  var id = p.getProperty('FILES_FOLDER_ID');
+  if (id) {
+    var meta = api_('get', DRIVE + '/files/' + id + '?fields=id,trashed', null, null, true);
+    if (meta && meta.id && !meta.trashed) return id;
+  }
+  var folder = dataFolder_();
+  id = findChild_(folder, FILES_FOLDER_NAME);
+  if (!id) {
+    id = api_('post', DRIVE + '/files?fields=id', { name: FILES_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: [folder] }).id;
+  }
+  p.setProperty('FILES_FOLDER_ID', id);
+  return id;
+}
+
+// Deletes pictures older than KEEP_FILE_DAYS, at most once a day.
+function clearOldFiles_(folder) {
+  var day = Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
+  var p = props_();
+  if (p.getProperty('FILES_CLEARED_DAY') === day) return;
+  var old = new Date(Date.now() - KEEP_FILE_DAYS * 864e5).toISOString();
+  var q = "'" + folder + "' in parents and trashed = false and createdTime < '" + old + "'";
+  var list = api_('get', DRIVE + '/files?fields=files(id)&q=' + encodeURIComponent(q));
+  (list.files || []).forEach(function (f) { api_('delete', DRIVE + '/files/' + f.id); });
+  p.setProperty('FILES_CLEARED_DAY', day);
+}
+
 function findChild_(folder, name) {
   var q = "'" + folder + "' in parents and name = '" + name + "' and trashed = false";
   var list = api_('get', DRIVE + '/files?fields=files(id)&q=' + encodeURIComponent(q));
@@ -471,7 +536,8 @@ function request_(method, url, payload, contentType) {
   var r = { url: url, method: method, muteHttpExceptions: true,
             headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } };
   if (payload !== null && payload !== undefined) {
-    r.payload = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    // a string or a byte array (a picture) goes as it is; anything else as JSON
+    r.payload = (typeof payload === 'string' || Array.isArray(payload)) ? payload : JSON.stringify(payload);
     r.contentType = contentType || 'application/json';
   }
   return r;

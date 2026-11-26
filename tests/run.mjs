@@ -175,6 +175,34 @@ await check('the relay protocol: ask sends the passphrase and the message, ping 
   ask.setAskConfig({});
 });
 
+await check('pictures: the message lists their Drive ids and how to fetch them; the relay never gets the picture', async () => {
+  const msg = ask.messageFor('Look at this', new Date('2026-11-23T12:05:00Z'), [{ id: 'f1', name: 'shot.png' }]);
+  must(msg.includes('\nLook at this\n') && /file-get <id>/.test(msg) && msg.endsWith('- f1 (shot.png)'), msg);
+  const pic = { name: 'shot.png', mimeType: 'image/png', data: Buffer.from('fake picture').toString('base64') };
+  ask.setAskConfig({ url: 'https://script.google.com/macros/s/EXAMPLE/exec', pass: 'example-pass' });
+  let threw = '';
+  try { await ask.ask('Look', [pic]); } catch (e) { threw = e.message; }
+  must(/connect Google Drive/.test(threw), 'without Drive, pictures must be refused before sending: ' + threw);
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    const b = JSON.parse(opts.body);
+    calls.push({ url, body: b });
+    const reply = b.action === 'filePut' ? { ok: true, file: { id: 'pic1', name: b.name, mimeType: b.mimeType, size: 12 } }
+      : { ok: true, sessionUrl: 'https://claude.ai/code/session_TEST' };
+    return { ok: true, text: async () => JSON.stringify(reply) };
+  };
+  localStorage.setItem('dashboard.gateway', JSON.stringify({ url: 'https://script.google.com/macros/s/GATEWAY/exec', key: 'example-key' }));
+  const entry = await ask.ask('', [pic]);
+  must(entry.status === 'sent' && entry.pictures === 1, JSON.stringify(entry));
+  must(calls[0].body.action === 'filePut' && calls[0].url.includes('GATEWAY'), 'the picture goes to the gateway first');
+  const relayed = calls.find((c) => c.body.action === 'ask');
+  must(relayed && relayed.url.includes('EXAMPLE') && relayed.body.text.includes('- pic1 (shot.png)'), 'relay text: ' + (relayed && relayed.body.text));
+  must(!JSON.stringify(relayed.body).includes(pic.data), 'the picture itself must not go to the relay');
+  must(!JSON.stringify(store.state.asks).includes(pic.data), 'the picture must not be kept in the history');
+  localStorage.removeItem('dashboard.gateway');
+  ask.setAskConfig({});
+});
+
 await check('a relay error is kept as "not sent" with the reason', async () => {
   globalThis.fetch = async () => ({ ok: true, text: async () => JSON.stringify({ ok: false, error: 'Wrong passphrase.' }) });
   ask.setAskConfig({ url: 'https://script.google.com/macros/s/EXAMPLE/exec', pass: 'nope' });
@@ -284,6 +312,22 @@ await check('gateway: Claude reads mail (read only) with plain-text bodies', () 
   const g = gw.post({ action: 'mailGet', key: claude, id: 'm1' });
   must(g.message.text === 'Order shipped. Æ ø å.', 'body: ' + g.message.text);
   must(gw.calls.every((c) => c.method === 'get' || !c.url.includes('gmail')), 'mail must only ever be read');
+});
+
+await check('gateway: pictures go into their own folder; the app may add them, only Claude may read them', () => {
+  const { gw, app, claude } = freshGateway();
+  const bytes = Buffer.from([137, 80, 78, 71, 0, 1, 2, 255]);
+  const put = gw.post({ action: 'filePut', key: app, name: 'shot.png', mimeType: 'image/png', data: bytes.toString('base64') });
+  must(put.ok && put.file.id && put.file.size === bytes.length, JSON.stringify(put));
+  const folder = [...gw.files.values()].find((f) => f.name === 'Ask Claude pictures');
+  must(folder && gw.files.get(put.file.id).parents.includes(folder.id), 'saved in the pictures folder');
+  must(!gw.post({ action: 'fileGet', key: app, id: put.file.id }).ok, 'the app key may not read pictures back');
+  const got = gw.post({ action: 'fileGet', key: claude, id: put.file.id });
+  must(got.ok && Buffer.from(got.file.data, 'base64').equals(bytes), 'Claude gets the same bytes: ' + JSON.stringify(got).slice(0, 200));
+  const ws = gw.post({ action: 'push', key: claude, items: [item('n1')] });
+  const wsFile = [...gw.files.values()].find((f) => f.name === 'workspace.json');
+  must(ws.ok && !gw.post({ action: 'fileGet', key: claude, id: wsFile.id }).ok, 'fileGet must only read the pictures folder');
+  must(!gw.post({ action: 'filePut', key: app, name: 'x.html', mimeType: 'text/html', data: 'PGI+' }).ok, 'only pictures');
 });
 
 await check('gateway: events are only ever added, changed or deleted on the Dashboard calendar', () => {
@@ -400,6 +444,10 @@ await check('tools/data.mjs (Claude\'s door) pushes and pulls through the gatewa
     must(r.code === 0 && /"Sample type": 1/.test(r.out), 'pull: ' + r.out + r.err);
     must(existsSync(join(dir, 'workspace.json')), 'workspace.json in the data folder');
     must(gw.workspace().items.r1.by === 'claude', 'written as claude');
+    const pic = gw.post({ action: 'filePut', key: claude, name: 'shot.png', mimeType: 'image/png', data: Buffer.from('sample').toString('base64') });
+    r = await run(['file-get', pic.file.id]);
+    must(r.code === 0 && existsSync(join(dir, 'files', pic.file.id + '.png')) &&
+      readFileSync(join(dir, 'files', pic.file.id + '.png'), 'utf8') === 'sample', 'file-get: ' + r.out + r.err);
     r = await run(['pull'], { ...env, DASHBOARD_DATA_DIR: join(ROOT, 'data') });
     must(r.code !== 0 && /inside the repo/.test(r.err), 'must refuse a data folder inside the repo');
   } finally {

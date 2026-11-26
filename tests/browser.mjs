@@ -62,7 +62,10 @@ async function fakeRelay(route) {
   const body = JSON.parse(route.request().postData() || '{}');
   relayCalls.push(body);
   let reply;
-  if (relayMode === 'wrong-pass' || body.passphrase !== 'test-pass') reply = { ok: false, error: 'Wrong passphrase. Copy it again from the relay (run setup() to see it).' };
+  if (body.key === 'test-key') {      // the gateway, for pictures
+    reply = body.action === 'filePut' ? { ok: true, file: { id: 'pic1', name: body.name, mimeType: body.mimeType, size: 10 } }
+      : { ok: true, rev: 0, items: [], accepted: [] };
+  } else if (relayMode === 'wrong-pass' || body.passphrase !== 'test-pass') reply = { ok: false, error: 'Wrong passphrase. Copy it again from the relay (run setup() to see it).' };
   else if (body.action === 'ping') reply = { ok: true, ready: true };
   else reply = { ok: true, sessionUrl: 'https://claude.ai/code/session_TEST', sessionId: 'session_TEST' };
   await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(reply) });
@@ -131,6 +134,32 @@ await check('a refused message stays recoverable', async () => {
   await page.click('[data-refill]');
   must((await page.inputValue('#askText')) === 'Make the clock bigger', 'Put back in the box');
   relayMode = 'ok';
+});
+
+await check('Ask Claude takes a picture: a thumbnail, then it goes to Drive and the message names it', async () => {
+  // a 3000 x 1200 screenshot stand-in, made in the page
+  const png = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 3000; c.height = 1200;
+    const g = c.getContext('2d'); g.fillStyle = '#c33'; g.fillRect(0, 0, 3000, 1200);
+    const b = await new Promise((r) => c.toBlob(r, 'image/png'));
+    return [...new Uint8Array(await b.arrayBuffer())];
+  });
+  await page.setInputFiles('#askFile', { name: 'screenshot.png', mimeType: 'image/png', buffer: Buffer.from(png) });
+  await page.waitForSelector('#askPics .ask-pic img');
+  await page.fill('#askText', 'Look at this');
+  await page.click('#askSend');
+  await page.waitForFunction(() => /Google Drive/.test(document.querySelector('#askStatus').textContent));
+  must(await page.$('#askPics .ask-pic img'), 'the picture stays when it cannot be sent');
+  await page.evaluate(() => localStorage.setItem('dashboard.gateway', JSON.stringify({ url: 'https://script.google.com/macros/s/TESTGW/exec', key: 'test-key' })));
+  await page.click('#askSend');
+  await page.waitForFunction(() => /^Sent to Claude/.test(document.querySelector('#askStatus').textContent));
+  const put = relayCalls.find((c) => c.action === 'filePut');
+  must(put && put.mimeType === 'image/jpeg' && put.name === 'screenshot.jpg', 'a big screenshot is scaled down: ' + (put && put.name));
+  const sent = relayCalls.at(-1);
+  must(sent.action === 'ask' && sent.text.includes('- pic1 (screenshot.jpg)') && !sent.text.includes(put.data.slice(0, 40)), 'relay text');
+  must(await page.$eval('#askPics', (el) => el.hidden), 'pictures cleared after sending');
+  must(/1 picture/.test(await page.textContent('#askHistory')), 'history shows the picture');
+  await page.evaluate(() => localStorage.removeItem('dashboard.gateway'));
 });
 
 await check('the app opens offline after one visit', async () => {

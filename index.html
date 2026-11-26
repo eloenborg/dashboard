@@ -79,8 +79,11 @@
     <label for="askText" class="card-title">Ask Claude</label>
     <textarea id="askText" rows="3" placeholder="Ask for a change, a view of your data, or anything else"
       autocapitalize="sentences"></textarea>
+    <div id="askPics" class="ask-pics" hidden></div>
+    <input id="askFile" type="file" accept="image/*" multiple hidden>
     <div class="row">
       <button id="askSend" class="primary" type="button">Ask Claude</button>
+      <button id="askAddPic" class="pic-btn" type="button" aria-label="Add a picture or screenshot"><span class="ico" data-icon="picture"></span><span>Picture</span></button>
       <span id="askMode" class="hint"></span>
     </div>
     <p id="askStatus" class="status" role="status" aria-live="polite"></p>

@@ -26,7 +26,9 @@ export function loadGateway(path, opts = {}) {
 
   function reply(code, body) {
     const text = body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body);
-    return { getResponseCode: () => code, getContentText: () => text };
+    const bytes = Array.isArray(body) ? body : null;
+    return { getResponseCode: () => code, getContentText: () => (bytes ? Buffer.from(bytes).toString('latin1') : text),
+      getContent: () => (bytes ? bytes.slice() : [...Buffer.from(text, 'utf8')]) };
   }
 
   function route(req) {
@@ -81,7 +83,7 @@ export function loadGateway(path, opts = {}) {
         if (method === 'delete') { files.delete(m[1]); return reply(204); }
         if (!f) return reply(404, { error: { message: 'File not found' } });
         if (u.searchParams.get('alt') === 'media') return reply(200, f.content);
-        return reply(200, { id: f.id, trashed: f.trashed });
+        return reply(200, { id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, trashed: f.trashed });
       }
     }
 
@@ -156,6 +158,8 @@ export function loadGateway(path, opts = {}) {
       sleep() {},
       getUuid: () => randomUUID(),
       formatDate: (d, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d),
+      base64Decode: (s) => { if (!/^[A-Za-z0-9+/=\s]*$/.test(s)) throw new Error('bad base64'); return [...Buffer.from(s, 'base64')]; },
+      base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
       base64DecodeWebSafe: (s) => [...Buffer.from(s, 'base64url')],
       newBlob: (bytes) => ({ getDataAsString: () => Buffer.from(bytes).toString('utf8') }),
     },

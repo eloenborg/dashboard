@@ -263,6 +263,13 @@ export async function testGateway() {
   return 'Connected. Your data is saved on Google Drive.';
 }
 
+// Saves a picture in the "Ask Claude pictures" folder on Drive.
+// { name, mimeType, data (base64) } -> { id, name, mimeType, size }
+export async function uploadPicture(pic) {
+  const j = await call({ action: 'filePut', name: pic.name, mimeType: pic.mimeType, data: pic.data });
+  return j.file;
+}
+
 let syncing = null;
 let again = false;
 

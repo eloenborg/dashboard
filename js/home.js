@@ -9,7 +9,7 @@ import * as data from './data.js';
 import { renderView } from './views.js';
 import { titleOf } from './model.js';
 import { BUILD } from './version.js';
-import { ask, isConnected } from './ask.js';
+import { ask, isConnected, preparePicture, MAX_PICTURES } from './ask.js';
 import { onlineBuild, forceUpdate } from './update.js';
 import { $, esc, clock, dayAndClock, safeHref, icon, timeAgo } from './ui.js';
 
@@ -17,6 +17,8 @@ const SHOW = 8;                  // past messages listed under the box
 const WATCH_MS = 15 * 60e3;      // after sending, look for a new version this long
 const WATCH_EVERY = 20e3;
 
+let pictures = [];               // ready to send with the next message
+let preparing = 0;
 let watchUntil = 0;
 let watchTimer = null;
 
@@ -30,6 +32,29 @@ export function initHome() {
   $('#updateNow').addEventListener('click', () => {
     $('#updateNow').textContent = 'Updating…';
     forceUpdate();
+  });
+  // pictures: the Picture button, pasting a screenshot, or dropping a file
+  $('#askAddPic').addEventListener('click', () => $('#askFile').click());
+  $('#askFile').addEventListener('change', (e) => {
+    addPictures([...e.target.files]);
+    e.target.value = '';
+  });
+  box.addEventListener('paste', (e) => {
+    const files = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => /^image\//.test(f.type));
+    if (files.length) { e.preventDefault(); addPictures(files); }
+  });
+  box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drop'); });
+  box.addEventListener('dragleave', () => box.classList.remove('drop'));
+  box.addEventListener('drop', (e) => {
+    box.classList.remove('drop');
+    const files = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter((f) => /^image\//.test(f.type));
+    if (files.length) { e.preventDefault(); addPictures(files); }
+  });
+  $('#askPics').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-unpic]');
+    if (!btn) return;
+    pictures.splice(Number(btn.dataset.unpic), 1);
+    renderPictures();
   });
   $('#askHistory').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-refill]');
@@ -53,15 +78,45 @@ export function renderHome() {
   renderHistory();
 }
 
+async function addPictures(files) {
+  const status = $('#askStatus');
+  status.className = 'status';
+  status.textContent = '';
+  for (const f of files) {
+    if (pictures.length + preparing >= MAX_PICTURES) {
+      status.className = 'status bad';
+      status.textContent = 'At most ' + MAX_PICTURES + ' pictures per message.';
+      break;
+    }
+    preparing++;
+    renderPictures();
+    try { pictures.push(await preparePicture(f)); }
+    catch (e) { status.className = 'status bad'; status.textContent = e.message; }
+    finally { preparing--; renderPictures(); }
+  }
+}
+
+function renderPictures() {
+  const el = $('#askPics');
+  el.hidden = !pictures.length && !preparing;
+  el.innerHTML = pictures.map((p, i) =>
+    '<div class="ask-pic"><img src="' + esc(p.thumb) + '" alt="' + esc(p.name) + '">' +
+    '<button type="button" data-unpic="' + i + '" aria-label="Remove this picture">×</button></div>').join('') +
+    (preparing ? '<div class="ask-pic busy">Adding…</div>' : '');
+}
+
 async function send() {
   const box = $('#askText');
   const btn = $('#askSend');
   const status = $('#askStatus');
+  if (preparing) { status.className = 'status'; status.textContent = 'One moment, the picture is still being added.'; return; }
   status.className = 'status';
   btn.disabled = true;
-  btn.textContent = 'Sending…';
+  btn.textContent = pictures.length ? 'Sending pictures…' : 'Sending…';
+  const sentPictures = pictures.length;
   try {
-    const entry = await ask(box.value);
+    const entry = await ask(box.value, pictures);
+    if (entry.status === 'sent' || entry.status === 'opened') { pictures = []; renderPictures(); }
     if (entry.status === 'sent') {
       box.value = '';
       status.innerHTML = 'Sent to Claude at ' + esc(clock(entry.at)) + '. Claude is working on it now.' +
@@ -69,7 +124,9 @@ async function send() {
       watchForUpdate();
     } else if (entry.status === 'opened') {
       box.value = '';
-      status.textContent = 'Opened in Claude with your message filled in. Tap send there.';
+      status.textContent = sentPictures
+        ? 'Opened in Claude with your message filled in. Add your picture there (the + button), then tap send.'
+        : 'Opened in Claude with your message filled in. Tap send there.';
       watchForUpdate();
     } else {
       status.className = 'status bad';
@@ -102,6 +159,7 @@ function renderHistory() {
     } else {
       meta = 'Sending…';
     }
+    if (a.pictures) meta += ' · ' + a.pictures + (a.pictures > 1 ? ' pictures' : ' picture');
     return '<div class="ask-item"><div class="ask-text">' + esc(a.text) + '</div>' +
       '<div class="ask-meta">' + meta + '</div></div>';
   }).join('');

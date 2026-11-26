@@ -13,16 +13,26 @@
 //   The button opens the Claude app (or claude.ai on a computer) with the
 //   message and this repo filled in, and Ebbe taps send there.
 //
+// Pictures (screenshots, photos): saved first in the "Ask Claude pictures"
+// folder on Ebbe's Drive through the gateway (js/data.js), never sent to the
+// relay or GitHub. The message only carries their Drive ids, and Claude
+// fetches them with `node tools/data.mjs file-get <id>`. Without the Drive
+// connection, pictures can only be added by hand in the Claude app.
+//
 // The relay address and passphrase are kept per device under their own
 // localStorage key, never in `state`, never in exports, never in the repo.
 
 import { state, changed, uid } from './store.js';
 import { BUILD } from './version.js';
 import { REPO, BRANCH, OWNER, TIME_ZONE } from './config.js';
+import { isDataConnected, uploadPicture } from './data.js';
 
 const CFG_KEY = 'dashboard.askClaude';
 const MAX_TEXT = 8000;
 const KEEP = 30;   // how many past messages the home screen remembers
+export const MAX_PICTURES = 4;
+const MAX_SIDE = 2000;          // longer pictures are scaled down to this
+const KEEP_AS_IS = 1.5e6;       // smaller PNG/JPEG/WebP files are sent unchanged
 
 export function askConfig() {
   try { return JSON.parse(localStorage.getItem(CFG_KEY)) || {}; } catch (e) { return {}; }
@@ -61,7 +71,8 @@ export function isPhone() {
 }
 
 // The text sent to Claude: who, when, which version, then the message itself.
-export function messageFor(text, now = new Date()) {
+// pictures: [{ id, name }] already saved on Drive.
+export function messageFor(text, now = new Date(), pictures = []) {
   const when = now.toLocaleString('en-GB', {
     timeZone: TIME_ZONE, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -73,7 +84,55 @@ export function messageFor(text, now = new Date()) {
     '',
     '---',
     text,
-  ].join('\n');
+  ].concat(pictures.length ? [
+    '',
+    '---',
+    'Pictures attached (' + pictures.length + '). They are in his Drive data folder. Fetch each with ' +
+      '`node tools/data.mjs file-get <id>` and look at the file it writes:',
+    ...pictures.map((p) => '- ' + p.id + ' (' + p.name + ')'),
+  ] : []).join('\n');
+}
+
+// ---------- pictures ----------
+
+function readAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error || new Error('The picture could not be read.'));
+    r.readAsDataURL(blob);
+  });
+}
+
+// A picked or pasted image file -> { name, mimeType, data (base64), size, thumb }.
+// Big ones are scaled down and saved as JPEG, so they upload quickly.
+export async function preparePicture(file) {
+  if (!file || !/^image\//.test(file.type || '')) throw new Error('That is not a picture.');
+  const name = file.name || ('picture-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png');
+  let blob = file;
+  let mimeType = file.type;
+  let bitmap = null;
+  try { bitmap = await createImageBitmap(file); } catch (e) { bitmap = null; }
+  const big = bitmap && Math.max(bitmap.width, bitmap.height) > MAX_SIDE;
+  const plain = /^image\/(png|jpeg|webp)$/.test(mimeType);
+  if (bitmap && (big || !plain || file.size > KEEP_AS_IS)) {
+    const k = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bitmap.width * k);
+    c.height = Math.round(bitmap.height * k);
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bitmap, 0, 0, c.width, c.height);
+    const out = await new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.88));
+    if (out) { blob = out; mimeType = 'image/jpeg'; }
+  }
+  if (bitmap && bitmap.close) bitmap.close();
+  const url = await readAsDataUrl(blob);
+  return {
+    name: mimeType === 'image/jpeg' && blob !== file ? name.replace(/\.\w+$/, '') + '.jpg' : name,
+    mimeType, data: url.slice(url.indexOf(',') + 1), size: blob.size, thumb: url,
+  };
 }
 
 // ---------- fallback: open the Claude app with the message filled in ----------
@@ -124,13 +183,19 @@ export async function testConnection() {
 
 // ---------- sending ----------
 
-// Returns the history entry. Throws only for an empty or too-long message.
-export async function ask(text) {
+// pictures: from preparePicture(). Returns the history entry. Throws only
+// for an empty or too-long message, or pictures that cannot be sent.
+export async function ask(text, pictures = []) {
   text = String(text || '').trim();
-  if (!text) throw new Error('Type a message first.');
+  if (!text && !pictures.length) throw new Error('Type a message first.');
   if (text.length > MAX_TEXT) throw new Error('That message is too long (' + text.length + ' characters; the limit is ' + MAX_TEXT + ').');
+  if (pictures.length > MAX_PICTURES) throw new Error('At most ' + MAX_PICTURES + ' pictures per message.');
+  if (pictures.length && isConnected() && !isDataConnected()) {
+    throw new Error('Pictures are saved on your Google Drive for Claude, so connect Google Drive in Settings first. Or remove the picture.');
+  }
+  if (!text) text = '(No text. See the picture' + (pictures.length > 1 ? 's' : '') + '.)';
 
-  const entry = { id: uid(), at: Date.now(), text, status: 'sending', sessionUrl: '', error: '' };
+  const entry = { id: uid(), at: Date.now(), text, pictures: pictures.length, status: 'sending', sessionUrl: '', error: '' };
   state.asks.unshift(entry);
   state.asks.length = Math.min(state.asks.length, KEEP);
   changed();
@@ -150,8 +215,13 @@ export async function ask(text) {
   }
 
   try {
+    const saved = [];
+    for (const p of pictures) {
+      try { saved.push(await uploadPicture(p)); }
+      catch (e) { throw new Error('A picture could not be saved on Drive: ' + e.message); }
+    }
     const { pass } = askConfig();
-    const j = await relay({ action: 'ask', passphrase: pass, text: messageFor(text) });
+    const j = await relay({ action: 'ask', passphrase: pass, text: messageFor(text, new Date(), saved) });
     entry.status = 'sent';
     entry.sessionUrl = String(j.sessionUrl || '');
   } catch (e) {
