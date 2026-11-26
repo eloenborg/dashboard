@@ -61,6 +61,7 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 | `js/store.js` | Small per-device state (`state`, recent Ask Claude messages) and `uid()`. localStorage key `dashboard.v1`. |
 | `js/config.js` | Repo name, owner name, time zone. |
 | `js/version.js` | `BUILD`, the version number. |
+| `js/theme.js` | Light or dark colours (dark by default), set before the page draws. A plain script in `<head>`, per device. |
 | `js/ui.js` | Helpers: `$`, `esc`, `safeHref`, time formats. |
 | `sw.js` | Service worker: fresh files when online, saved copies when offline. |
 | `manifest.webmanifest`, `icon.svg`, `icon-180.png`, `icon-512.png` | Home-screen app name and icons. |

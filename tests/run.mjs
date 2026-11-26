@@ -73,6 +73,20 @@ await check('every file the page, manifest, styles and scripts point to exists',
   must(!missing.length, 'missing: ' + missing.join(', '));
 });
 
+await check('dark colours are the default, and light ones still exist', () => {
+  const css = read('style.css');
+  const first = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+  must(/color-scheme:\s*dark/.test(first), 'the first :root block in style.css must be the dark colours');
+  must(css.includes(':root[data-theme="light"]'), 'style.css must keep the light colours under :root[data-theme="light"]');
+  const html = read('index.html');
+  must(html.indexOf('js/theme.js') > -1 && html.indexOf('js/theme.js') < html.indexOf('</head>'), 'js/theme.js must load in <head>, before the page draws');
+  const t = read('js/theme.js');
+  must(/return 'dark';/.test(t), "js/theme.js must fall back to 'dark'");
+  const after = css.slice(css.indexOf('/* ---------- buttons'));
+  const hard = after.match(/(?:background|color):\s*#[0-9A-Fa-f]{3,6}\b/g);
+  must(!hard, 'use colour variables, not fixed colours, so both themes work: ' + (hard || []).join(', '));
+});
+
 await check('every #id the scripts look up exists in index.html', () => {
   const ids = new Set([...read('index.html').matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
   const missing = [];
