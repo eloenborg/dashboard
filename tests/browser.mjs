@@ -327,6 +327,23 @@ await check('a view switches between table, board, list, gallery and checklist',
   }
 });
 
+await check('a checklist works like reminders: type a new item in, tick it off', async () => {
+  const v = '#pageView .view >> nth=0';
+  await w.click(v + ' >> [data-arch="checklist"]');
+  await w.waitForSelector('#pageView .view.arch-checklist [data-quick-add]');
+  const before = await w.locator('#pageView .view.arch-checklist >> nth=0').locator('.clist .crow:not(.quick)').count();
+  await w.fill('#pageView .view.arch-checklist [data-quick-add] >> nth=0', 'Typed in item');
+  await w.press('#pageView .view.arch-checklist [data-quick-add] >> nth=0', 'Enter');
+  await w.waitForFunction(() => [...document.querySelectorAll('#pageView .view.arch-checklist .crow-title')].some((b) => b.textContent === 'Typed in item'));
+  must(await w.evaluate(() => document.activeElement && document.activeElement.matches('[data-quick-add]')), 'the cursor should stay in the new-item line');
+  const row = w.locator('#pageView .view.arch-checklist >> nth=0').locator('.crow', { hasText: 'Typed in item' });
+  await row.locator('input.circle').check();
+  await w.waitForFunction(() => [...document.querySelectorAll('#pageView .view.arch-checklist .done-list .crow-title')].some((b) => b.textContent === 'Typed in item'));
+  must(before >= 0, 'count');
+  await w.click(v + ' >> [data-arch="table"]');
+  await w.waitForSelector('#pageView .view.arch-table');
+});
+
 await check('search finds pages and items', async () => {
   await w.keyboard.press('Control+k');
   await w.waitForSelector('#screen-search:not([hidden])');

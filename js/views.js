@@ -52,13 +52,18 @@ export function renderView(host, viewId, opts = {}) {
 
   const more = opts.compact && total > records.length
     ? '<button type="button" class="link small" data-open-view="' + esc(view.id) + '">Show all ' + total + '</button>' : '';
-  const add = type && !opts.compact && arch !== 'board'
+  const add = type && !opts.compact && arch !== 'board' && !(arch === 'checklist' && records.length)
     ? '<button type="button" class="add-row" data-add>' + icon('plus') + '<span>New</span></button>' : '';
 
   host.className = 'view arch-' + arch + (opts.compact ? ' compact' : '');
   host.dataset.view = view.id;
   host.innerHTML = head + '<div class="view-body">' + body + '</div>' + add + more;
   wire(host, view, type);
+  if (refocus === view.id) {
+    refocus = null;
+    const q = host.querySelector('[data-quick-add]');
+    if (q) q.focus();
+  }
 }
 
 function columns(view, type) {
@@ -142,19 +147,39 @@ function gallery(view, type, records) {
 }
 
 // ---------------------------------------------------------------- checklist
+// Works like a phone's reminders app: round tick circles, a "New item" line
+// at the bottom to type the next one straight in, ticked items folded away.
 
-function checklist(view, type, records) {
+function checklist(view, type, records, opts = {}) {
   const box = (type.fields || []).find((f) => f.type === 'checkbox');
   if (!box) return '<p class="muted small">A checklist needs a tick-box field. Showing a list instead.</p>' + list(view, type, records);
   const others = columns(view, type).filter((f) => f.key !== box.key).slice(0, 2);
   const open = records.filter((r) => !valueOf(r, box.key));
   const done = records.filter((r) => valueOf(r, box.key));
   const row = (r) => '<li class="crow' + (valueOf(r, box.key) ? ' done' : '') + '">' +
-    '<input type="checkbox" data-check="' + esc(r.id) + '" data-field="' + esc(box.key) + '"' + (valueOf(r, box.key) ? ' checked' : '') + ' aria-label="' + esc(r.title || 'Untitled') + '">' +
-    '<button type="button" class="crow-title" data-open="' + esc(r.id) + '">' + esc(r.title || 'Untitled') + '</button>' +
+    '<input type="checkbox" class="circle" data-check="' + esc(r.id) + '" data-field="' + esc(box.key) + '"' + (valueOf(r, box.key) ? ' checked' : '') + ' aria-label="' + esc(r.title || 'Untitled') + '">' +
+    '<button type="button" class="crow-title" data-open="' + esc(r.id) + '">' + esc(r.title || 'Untitled') +
+    (r.notes ? '<span class="crow-notes">' + esc(String(r.notes).split('\n')[0]) + '</span>' : '') + '</button>' +
     others.map((f) => empty(valueOf(r, f.key)) ? '' : '<span class="chip">' + valueHTML(f, valueOf(r, f.key)) + '</span>').join('') + '</li>';
-  return '<ul class="clist">' + open.map(row).join('') + '</ul>' +
-    (done.length ? '<details class="done-list"><summary>' + done.length + ' done</summary><ul class="clist">' + done.map(row).join('') + '</ul></details>' : '');
+  const quick = opts.compact ? '' : '<li class="crow quick"><span class="circle ghost" aria-hidden="true"></span>' +
+    '<input type="text" class="quick-add" data-quick-add enterkeyhint="done" placeholder="New ' + esc((type.name || 'item').toLowerCase()) + '" aria-label="Add a new ' + esc((type.name || 'item').toLowerCase()) + '"></li>';
+  return '<ul class="clist">' + open.map(row).join('') + quick + '</ul>' +
+    (done.length ? '<details class="done-list"' + (openDone.has(view.id) ? ' open' : '') + '><summary>' + done.length + ' done</summary><ul class="clist">' + done.map(row).join('') + '</ul></details>' : '');
+}
+
+// Views whose "done" part is unfolded, and the view whose quick-add line
+// should keep the cursor after the screen is drawn again.
+const openDone = new Set();
+let refocus = null;
+
+// Values a new record gets so it shows in the view it was added from:
+// the view's "is" filters.
+function valuesFromFilters(view) {
+  const values = {};
+  for (const f of (view.source && view.source.filter) || []) {
+    if (f.op === 'is' && f.field && f.field !== 'title') values[f.field] = f.value;
+  }
+  return values;
 }
 
 // ---------------------------------------------------------------- one-off results
@@ -251,7 +276,7 @@ function wire(host, view, type) {
     if (menu) { viewMenu(menu, view, type); return; }
     const add = e.target.closest('[data-add]');
     if (add && type) {
-      const values = {};
+      const values = valuesFromFilters(view);
       const g = groupField(view, type);
       if (add.dataset.addValue !== undefined && g && add.dataset.addValue) values[g.key] = add.dataset.addValue;
       const r = newRecord(type.id, '', values);
@@ -263,6 +288,20 @@ function wire(host, view, type) {
     if (open) location.hash = '#r/' + open.dataset.open;
   };
   host.onkeydown = (e) => {
+    const q = e.target.closest && e.target.closest('[data-quick-add]');
+    if (q) {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      const title = q.value.trim();
+      if (!title || !type) return;
+      q.value = '';
+      refocus = view.id;
+      const box = (type.fields || []).find((f) => f.type === 'checkbox');
+      newRecord(type.id, title, { ...valuesFromFilters(view), ...(box ? { [box.key]: false } : {}) });
+      // if nothing redraws the view, the cursor simply stays here
+      setTimeout(() => { if (refocus === view.id) refocus = null; }, 1000);
+      return;
+    }
     const open = e.target.closest && e.target.closest('[data-open]');
     if (open && e.key === 'Enter' && open.tagName !== 'BUTTON') location.hash = '#r/' + open.dataset.open;
   };
@@ -270,9 +309,19 @@ function wire(host, view, type) {
     const box = e.target.closest('[data-check]');
     if (box) {
       const r = get(box.dataset.check);
-      if (r) patch(r.id, { values: { ...(r.values || {}), [box.dataset.field]: box.checked } });
+      const row = box.closest('.crow');
+      if (row) row.classList.toggle('done', box.checked);
+      // a short pause so the circle is seen filling before the item moves
+      if (r) setTimeout(() => patch(r.id, { values: { ...((get(r.id) || r).values || {}), [box.dataset.field]: box.checked } }), box.checked ? 450 : 0);
     }
   };
+  if (!host.dataset.toggleWired) {
+    host.dataset.toggleWired = '1';
+    host.addEventListener('toggle', (e) => {
+      if (!e.target.matches || !e.target.matches('details.done-list')) return;
+      if (e.target.open) openDone.add(host.dataset.view); else openDone.delete(host.dataset.view);
+    }, true);
+  }
   // drag a card to another column (computer)
   host.ondragstart = (e) => {
     const c = e.target.closest('[data-drag]');
