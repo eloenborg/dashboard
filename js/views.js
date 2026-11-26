@@ -153,18 +153,47 @@ function gallery(view, type, records) {
 function checklist(view, type, records, opts = {}) {
   const box = (type.fields || []).find((f) => f.type === 'checkbox');
   if (!box) return '<p class="muted small">A checklist needs a tick-box field. Showing a list instead.</p>' + list(view, type, records);
-  const others = columns(view, type).filter((f) => f.key !== box.key).slice(0, 2);
-  const open = records.filter((r) => !valueOf(r, box.key));
+  const pf = priorityField(type);
+  const others = columns(view, type).filter((f) => f.key !== box.key && (!pf || f.key !== pf.key)).slice(0, 2);
+  const prio = (r) => priorityOf(r, pf);
+  // open items: priority 1 first, then 2, then 3, then those without one
+  const open = records.filter((r) => !valueOf(r, box.key)).map((r, i) => ({ r, i }))
+    .sort((a, b) => ((prio(a.r) || 9) - (prio(b.r) || 9)) || (a.i - b.i)).map((x) => x.r);
   const done = records.filter((r) => valueOf(r, box.key));
   const row = (r) => '<li class="crow' + (valueOf(r, box.key) ? ' done' : '') + '">' +
     '<input type="checkbox" class="circle" data-check="' + esc(r.id) + '" data-field="' + esc(box.key) + '"' + (valueOf(r, box.key) ? ' checked' : '') + ' aria-label="' + esc(r.title || 'Untitled') + '">' +
     '<button type="button" class="crow-title" data-open="' + esc(r.id) + '">' + esc(r.title || 'Untitled') +
     (r.notes ? '<span class="crow-notes">' + esc(String(r.notes).split('\n')[0]) + '</span>' : '') + '</button>' +
-    others.map((f) => empty(valueOf(r, f.key)) ? '' : '<span class="chip">' + valueHTML(f, valueOf(r, f.key)) + '</span>').join('') + '</li>';
+    others.map((f) => empty(valueOf(r, f.key)) ? '' : '<span class="chip">' + valueHTML(f, valueOf(r, f.key)) + '</span>').join('') +
+    (opts.compact && !prio(r) ? '' : '<button type="button" class="prio' + (prio(r) ? ' p' + prio(r) : '') + '" data-prio="' + esc(r.id) + '"' + (opts.compact ? ' disabled' : '') +
+      ' title="Priority: tap to change" aria-label="Priority ' + (prio(r) || 'none') + '">' + (prio(r) || '–') + '</button>') + '</li>';
   const quick = opts.compact ? '' : '<li class="crow quick"><span class="circle ghost" aria-hidden="true"></span>' +
     '<input type="text" class="quick-add" data-quick-add enterkeyhint="done" placeholder="New ' + esc((type.name || 'item').toLowerCase()) + '" aria-label="Add a new ' + esc((type.name || 'item').toLowerCase()) + '"></li>';
   return '<ul class="clist">' + open.map(row).join('') + quick + '</ul>' +
     (done.length ? '<details class="done-list"' + (openDone.has(view.id) ? ' open' : '') + '><summary>' + done.length + ' done</summary><ul class="clist">' + done.map(row).join('') + '</ul></details>' : '');
+}
+
+// Priority 1, 2 or 3 on a checklist item. The type's field with the key or
+// label "priority" holds it; the first tap adds that field if there is none.
+function priorityField(type) {
+  return (type.fields || []).find((f) => f.key === 'priority' || /^priority$/i.test(f.label || '')) || null;
+}
+function priorityOf(r, pf) {
+  const n = pf ? parseInt(valueOf(r, pf.key), 10) : 0;
+  return n >= 1 && n <= 3 ? n : 0;
+}
+function cyclePriority(type, id) {
+  const r = get(id);
+  if (!r || !type) return;
+  let pf = priorityField(type);
+  if (!pf) {
+    pf = { key: 'priority', label: 'Priority', type: 'number' };
+    patch(type.id, { fields: [...(type.fields || []), pf] });
+  }
+  const next = (priorityOf(r, pf) + 1) % 4; // none → 1 → 2 → 3 → none
+  const values = { ...(r.values || {}) };
+  if (next) values[pf.key] = pf.type === 'number' ? next : String(next); else delete values[pf.key];
+  patch(r.id, { values });
 }
 
 // Views whose "done" part is unfolded, and the view whose quick-add line
@@ -284,6 +313,8 @@ function wire(host, view, type) {
       return;
     }
     if (e.target.closest('[data-check]')) return;
+    const pr = e.target.closest('[data-prio]');
+    if (pr) { cyclePriority(type, pr.dataset.prio); return; }
     const open = e.target.closest('[data-open]');
     if (open) location.hash = '#r/' + open.dataset.open;
   };

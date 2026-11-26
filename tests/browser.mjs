@@ -340,6 +340,17 @@ await check('a checklist works like reminders: type a new item in, tick it off',
   await row.locator('input.circle').check();
   await w.waitForFunction(() => [...document.querySelectorAll('#pageView .view.arch-checklist .done-list .crow-title')].some((b) => b.textContent === 'Typed in item'));
   must(before >= 0, 'count');
+  // priority: tap cycles 1, 2, 3; priority 1 items come first
+  const list = w.locator('#pageView .view.arch-checklist >> nth=0').locator('.clist >> nth=0');
+  const last = list.locator('.crow:not(.quick) >> nth=-1');
+  const lastTitle = await last.locator('.crow-title').textContent();
+  await last.locator('[data-prio]').click();
+  await w.waitForFunction((t) => { const r = document.querySelector('#pageView .view.arch-checklist .clist .crow'); return r && r.querySelector('.crow-title').textContent === t && r.querySelector('.prio.p1'); }, lastTitle);
+  await list.locator('.crow', { hasText: lastTitle }).locator('[data-prio]').click();
+  await w.waitForSelector('#pageView .view.arch-checklist .prio.p2');
+  await list.locator('.crow', { hasText: lastTitle }).locator('[data-prio]').click();
+  await list.locator('.crow', { hasText: lastTitle }).locator('[data-prio]').click();
+  await w.waitForFunction(() => !document.querySelector('#pageView .view.arch-checklist .prio.p1, #pageView .view.arch-checklist .prio.p2, #pageView .view.arch-checklist .prio.p3'));
   await w.click(v + ' >> [data-arch="table"]');
   await w.waitForSelector('#pageView .view.arch-table');
 });
