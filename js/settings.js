@@ -1,4 +1,4 @@
-// Settings: the version with Force update, and the Ask Claude connection.
+// Settings: the version with Force update, light or dark colours, and the connections.
 
 import { storageFull } from './store.js';
 import * as data from './data.js';
@@ -9,7 +9,20 @@ import { askConfig, setAskConfig, isConnected, testConnection } from './ask.js';
 import { REPO } from './config.js';
 import { $, esc } from './ui.js';
 
+function renderTheme() {
+  const t = window.dashboardTheme ? window.dashboardTheme.get() : 'dark';
+  document.querySelectorAll('[data-theme-pick]').forEach((b) => {
+    const on = b.dataset.themePick === t;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
 export function initSettings() {
+  document.querySelectorAll('[data-theme-pick]').forEach((b) => b.addEventListener('click', () => {
+    if (window.dashboardTheme) window.dashboardTheme.set(b.dataset.themePick);
+    renderTheme();
+  }));
   $('#setForce').addEventListener('click', () => {
     $('#setForce').textContent = 'Updating…';
     forceUpdate();
@@ -102,6 +115,7 @@ async function saveAndTestGateway() {
 }
 
 export function renderSettings() {
+  renderTheme();
   $('#setBuild').textContent = 'v' + BUILD;
   $('#setOnline').textContent = 'Checking the web…';
   onlineBuild().then((online) => {

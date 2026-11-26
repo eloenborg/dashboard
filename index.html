@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FBFBF7">
+<meta name="theme-color" content="#15171C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dashboard">
@@ -13,6 +13,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
+<script src="js/theme.js"></script>
 </head>
 <body>
 
@@ -130,6 +131,16 @@
       <button id="setForce" class="primary" type="button">↻ Force update</button>
     </div>
     <p class="hint">Force update throws away this device's saved copy of the app and loads the newest one from the web. Your data stays.</p>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Appearance</h2>
+    <div class="seg" id="setTheme" role="group" aria-label="Colours">
+      <button class="seg-btn" type="button" data-theme-pick="dark">Dark</button>
+      <button class="seg-btn" type="button" data-theme-pick="light">Light</button>
+      <button class="seg-btn" type="button" data-theme-pick="auto">Match device</button>
+    </div>
+    <p class="hint">Saved on this device only.</p>
   </section>
 
   <section class="card">
