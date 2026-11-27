@@ -106,18 +106,17 @@
 
 <!-- ============ ALL PAGES (phone) ============ -->
 <main id="screen-pages" class="screen" hidden>
-  <h1>Pages</h1>
-  <nav id="pagesList" class="tree big"></nav>
-  <div class="row">
-    <button id="pagesNew" class="primary" type="button">+ New page</button>
+  <label class="pages-search">
+    <span class="ico" data-icon="search"></span>
+    <input id="searchInput" type="search" placeholder="Search" aria-label="Search pages, items and views" autocapitalize="none" autocomplete="off" enterkeyhint="search">
+  </label>
+  <div id="searchResults" class="results" hidden></div>
+  <div id="pagesAll">
+    <nav id="pagesList" class="tree big"></nav>
+    <div class="row">
+      <button id="pagesNew" class="primary" type="button">+ New page</button>
+    </div>
   </div>
-</main>
-
-<!-- ============ SEARCH ============ -->
-<main id="screen-search" class="screen" hidden>
-  <h1>Search</h1>
-  <input id="searchInput" type="search" placeholder="Search pages, items and views" autocapitalize="none" autocomplete="off" enterkeyhint="search">
-  <div id="searchResults" class="results"></div>
 </main>
 
 <!-- ============ SETTINGS ============ -->
@@ -208,7 +207,6 @@
 <nav id="tabbar" aria-label="Main">
   <button class="tab" type="button" data-tab="today" data-go="#today"><span class="ico" data-icon="today"></span><span>Today</span></button>
   <button class="tab" type="button" data-tab="pages" data-go="#pages"><span class="ico" data-icon="pages"></span><span>Pages</span></button>
-  <button class="tab" type="button" data-tab="search" data-go="#search"><span class="ico" data-icon="search"></span><span>Search</span></button>
   <button class="tab" type="button" data-tab="ask" data-go="#ask"><span class="ico" data-icon="ask"></span><span>Ask</span></button>
 </nav>
 

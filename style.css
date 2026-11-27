@@ -239,7 +239,7 @@ textarea:focus, input:focus, select:focus { border-color: var(--ink); }
 
 #tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   height: calc(var(--tab-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   background: var(--bar);
@@ -623,7 +623,11 @@ button.th:hover { color: var(--ink); }
 /* ============================================================
    SEARCH, MENUS, TOASTS
    ============================================================ */
-#searchInput { font-size: 18px; padding: 12px 14px; margin: 4px 0 8px; border-radius: 13px; }
+/* Search sits as a small field at the top of Pages */
+.pages-search { display: flex; align-items: center; gap: 6px; margin: 2px 0 12px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--faint); }
+.pages-search:focus-within { border-color: var(--muted); }
+.pages-search .ico { width: 17px; height: 17px; flex: none; }
+.pages-search #searchInput { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none; outline: none; padding: 8px 2px; margin: 0; font-size: 16px; color: var(--ink); }
 .hits li a { display: flex; align-items: flex-start; gap: 12px; padding: 10px 6px; border-bottom: 1px solid var(--line-2); color: var(--ink); text-decoration: none; }
 .hits li a:hover { background: var(--hover); }
 .hits .ico { color: var(--faint); margin-top: 2px; }

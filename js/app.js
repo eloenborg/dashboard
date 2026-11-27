@@ -24,7 +24,7 @@ import { loadData, startSync, sync, isDataConnected, get, all } from './data.js'
 import { newPage, childPages, topPages, search, titleOf } from './model.js';
 import { $, $$, esc, icon, fillIcons, isDesktop, closeMenu, menuOpen } from './ui.js';
 
-const SCREEN_OF = { today: 'home', ask: 'home', page: 'page', view: 'view', pages: 'pages', search: 'search', settings: 'settings' };
+const SCREEN_OF = { today: 'home', ask: 'home', page: 'page', view: 'view', pages: 'pages', search: 'pages', settings: 'settings' };
 const UI_KEY = 'dashboard.ui';
 
 let main = { name: 'today' };     // the screen behind the item panel
@@ -71,8 +71,12 @@ function showMain(route) {
     focusTitleOf = null;
     openPage(route.id, { focusTitle: f });
   } else if (route.name === 'view') renderView($('#viewView'), route.id);
-  else if (route.name === 'pages') renderTree($('#pagesList'), true);
-  else if (route.name === 'search') { renderSearch(); setTimeout(() => $('#searchInput').focus(), 30); }
+  else if (route.name === 'pages' || route.name === 'search') {
+    if (route.name === 'pages') $('#searchInput').value = '';
+    renderTree($('#pagesList'), true);
+    renderSearch();
+    if (route.name === 'search') setTimeout(() => $('#searchInput').focus(), 30);
+  }
   else if (route.name === 'settings') renderSettings();
   else renderHome();
   if (route.name === 'ask') {
@@ -112,7 +116,7 @@ function chrome() {
   $('#settingsBtn').setAttribute('aria-pressed', String(at.name === 'settings'));
   document.title = home ? 'Dashboard' : titleFor(at) + ' · Dashboard';
 
-  const tab = at.name === 'ask' ? 'ask' : home ? 'today' : at.name === 'search' ? 'search' : (at.name === 'page' || at.name === 'pages' || at.name === 'view') ? 'pages' : '';
+  const tab = at.name === 'ask' ? 'ask' : home ? 'today' : (at.name === 'search' || at.name === 'page' || at.name === 'pages' || at.name === 'view') ? 'pages' : '';
   for (const b of $$('#tabbar .tab')) b.classList.toggle('on', b.dataset.tab === tab);
   for (const b of $$('#sidebar [data-go]')) b.classList.toggle('on', b.dataset.go === hashOf(at) || (b.dataset.go === '#today' && at.name === 'today'));
   for (const a of $$('#pageTree .t-row')) a.classList.toggle('on', at.name === 'page' && a.dataset.id === at.id);
@@ -122,7 +126,7 @@ function chrome() {
 function titleFor(r) {
   if (r.name === 'page') return titleOf(get(r.id)) || 'Page';
   if (r.name === 'view') return titleOf(get(r.id)) || 'View';
-  return { pages: 'Pages', search: 'Search', settings: 'Settings' }[r.name] || 'Dashboard';
+  return { pages: 'Pages', search: 'Pages', settings: 'Settings' }[r.name] || 'Dashboard';
 }
 
 // Where the phone's back button goes: one step up, not browser history.
@@ -216,11 +220,10 @@ function renderSearch() {
   const q = $('#searchInput').value;
   const hits = search(q);
   const out = $('#searchResults');
-  if (!q.trim()) {
-    const recent = all('page').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 8);
-    out.innerHTML = recent.length ? '<h2>Recent pages</h2>' + list(recent.map((item) => ({ item, snippet: '' }))) : '<p class="muted">Search finds words in your pages, items and views.</p>';
-    return;
-  }
+  const empty = !q.trim();
+  out.hidden = empty;
+  $('#pagesAll').hidden = !empty;
+  if (empty) { out.innerHTML = ''; return; }
   out.innerHTML = hits.length ? list(hits) : '<p class="muted">Nothing found for “' + esc(q) + '”.</p>';
 }
 
@@ -241,9 +244,8 @@ function onData() {
   clearTimeout(treeTimer);
   treeTimer = setTimeout(() => {
     renderTree($('#pageTree'), false);
-    if (!$('#screen-pages').hidden) renderTree($('#pagesList'), true);
+    if (!$('#screen-pages').hidden) { renderTree($('#pagesList'), true); renderSearch(); }
     if (!$('#screen-view').hidden && main.name === 'view') renderView($('#viewView'), main.id);
-    if (!$('#screen-search').hidden) renderSearch();
     chrome();
   }, 60);
 }
@@ -270,6 +272,7 @@ function init() {
   $('#searchInput').addEventListener('input', renderSearch);
   $('#searchInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const a = $('#searchResults a'); if (a) location.hash = a.getAttribute('href'); }
+    if (e.key === 'Escape') { e.target.value = ''; renderSearch(); e.target.blur(); }
   });
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); location.hash = '#search'; setTimeout(() => $('#searchInput').select(), 40); }

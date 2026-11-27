@@ -357,7 +357,7 @@ await check('a checklist works like reminders: type a new item in, tick it off',
 
 await check('search finds pages and items', async () => {
   await w.keyboard.press('Control+k');
-  await w.waitForSelector('#screen-search:not([hidden])');
+  await w.waitForSelector('#screen-pages:not([hidden]) #searchInput');
   await w.fill('#searchInput', 'item c');
   await w.waitForTimeout(100);
   must(/Item C/.test(await w.textContent('#searchResults')), 'item c: ' + (await w.textContent('#searchResults')).slice(0, 200));
