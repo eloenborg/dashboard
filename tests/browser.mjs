@@ -400,6 +400,36 @@ await check('a visitor without a key sees an empty app', async () => {
   await stranger.close();
 });
 
+await check('desktop: the calendar zooms from a day out to the years, and back into a month', async () => {
+  await w.goto(BASE + '#calendar');
+  await w.waitForSelector('#screen-calendar:not([hidden]) #calLevels .on');
+  await w.evaluate(async () => {
+    const d = await import('./js/data.js');
+    const t = new Date();
+    d.put({ id: 'calsample', kind: 'event', title: 'Sample event', start: new Date(t.getFullYear(), t.getMonth(), t.getDate(), 9).toISOString(), end: new Date(t.getFullYear(), t.getMonth(), t.getDate(), 10).toISOString() });
+  });
+  await w.click('[data-level="day"]');
+  await w.waitForSelector('.cal-layer.lv-day [data-ev="calsample"]');
+  const levels = [];
+  for (let i = 0; i < 5; i++) {
+    await w.waitForFunction(() => document.querySelectorAll('#calStage .cal-layer').length === 1);
+    const before = await w.getAttribute('#calLevels .on', 'data-level');
+    await w.click('#calOut');
+    await w.waitForFunction((b) => document.querySelector('#calLevels .on').dataset.level !== b, before);
+    levels.push(await w.getAttribute('#calLevels .on', 'data-level'));
+  }
+  must(levels.join() === 'week,month,quarter,year,road', 'zoom levels: ' + levels);
+  must(await w.isDisabled('#calOut'), 'the road is the furthest out');
+  must(await w.locator('svg.road .rd-dot.hol').count() > 10, 'the road shows holidays');
+  await w.click('svg.road .rd-month >> nth=0');
+  await w.waitForFunction(() => document.querySelector('#calLevels .on').dataset.level === 'month');
+  await w.click('[data-level="day"]');
+  await w.click('#calToday');
+  await w.click('[data-ev="calsample"]');
+  must(/Sample event/.test(await w.textContent('#calPop')), 'an event opens');
+  await w.keyboard.press('Escape');
+});
+
 // ---------- the workspace on a phone ----------
 const ph = await browser.newContext({ ...devices['iPhone 13'] });
 const p2 = await ph.newPage();
@@ -427,6 +457,16 @@ await check('phone: tab bar, Pages tab, an item opens full screen and closes aga
 await check('phone: the Ask tab goes to the Ask Claude box', async () => {
   await p2.click('[data-tab="ask"]');
   await p2.waitForFunction(() => document.activeElement && document.activeElement.id === 'askText');
+});
+
+await check('phone: the Calendar tab shows the calendar, and its zoom fits the screen', async () => {
+  await p2.click('[data-tab="calendar"]');
+  await p2.waitForSelector('#screen-calendar:not([hidden]) .cal-layer');
+  must(await p2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'no sideways scrolling');
+  await p2.click('[data-level="road"]');
+  await p2.waitForSelector('svg.road');
+  must(await p2.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'the road fits the width');
+  await p2.click('[data-level="month"]');
 });
 
 await check('no script errors on any page', () => {

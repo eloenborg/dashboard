@@ -495,6 +495,43 @@ await check('model: views filter, sort and group records of a type; search finds
   must(model.matches(b, { field: 'qty', op: 'gt', value: 1 }) && !model.matches(b, { field: 'qty', op: 'lt', value: 1 }), 'numbers');
 });
 
+await check('calendar: holidays and seasons follow the rules for any year', async () => {
+  const h = await import(pathToFileURL(join(ROOT, 'js/holidays.js')).href);
+  must(h.easter(2027).join('-') === '3-28' && h.easter(2030).join('-') === '4-21' && h.easter(2025).join('-') === '4-20', 'Easter dates');
+  const y = h.holidays(2027, 'DK');
+  const on = (d) => y.find((x) => x.date === d);
+  must(on('2027-03-26') && on('2027-03-26').off, 'Good Friday is a day off');
+  must(on('2027-05-06') && on('2027-05-17') && on('2027-06-05') && on('2027-12-25'), 'Ascension, Whit Monday, Constitution Day, Christmas');
+  must(y.filter((x) => x.group === 'Påske').length === 4, 'the Easter days share a group');
+  const s = h.seasons(2028);
+  must(s.find((x) => x.key === 'winter').end === '2028-02-29', 'a leap-year winter ends on 29 February');
+  must(h.seasonOf(12) === 'winter' && h.seasonOf(6) === 'summer', 'seasons by month');
+});
+
+await check('calendar: events, all-day spans, hidden calendars and periods are indexed by day', async () => {
+  const c = await import(pathToFileURL(join(ROOT, 'js/calendar.js')).href);
+  const items = [
+    { id: 'c1', kind: 'calendar', name: 'Calendar A', color: 'green' },
+    { id: 'c2', kind: 'calendar', name: 'Calendar B', hidden: true },
+    { id: 'a', kind: 'event', cal: 'c1', title: 'Sample trip', start: '2027-03-01', end: '2027-03-04', allDay: true },
+    { id: 'b', kind: 'event', cal: 'c1', title: 'Sample night', start: new Date(2027, 2, 5, 22).toISOString(), end: new Date(2027, 2, 6, 1).toISOString() },
+    { id: 'd', kind: 'event', cal: 'c2', title: 'Hidden item', start: '2027-03-01', allDay: true },
+    { id: 'e', kind: 'event', source: 'mail', title: 'Sample due', start: '2027-03-10', allDay: true, attention: true },
+    { id: 'p', kind: 'period', title: 'Type A break', start: '2027-03-08', end: '2027-03-12', group: 'Group A' },
+  ];
+  const ix = c.buildIndex(items);
+  const on = (k) => (ix.byDay.get(k) || []).map((o) => o.id).join(',');
+  must(on('2027-03-01') === 'a' && on('2027-03-03') === 'a' && on('2027-03-04') === '', 'all-day end is the day after: ' + on('2027-03-04'));
+  must(on('2027-03-05') === 'b' && on('2027-03-06') === 'b', 'a timed event past midnight shows on both days');
+  must(!on('2027-03-01').includes('d'), 'a hidden calendar is not shown');
+  must(ix.byDay.get('2027-03-01')[0].color === 'green', 'colour from the calendar');
+  must(ix.marks.length === 1 && ix.marks[0].id === 'e', 'items needing attention are marked');
+  must(ix.periods.length === 1 && ix.periods[0].color && ix.groups[0] === 'Group A', 'periods get a colour per group');
+  must(c.isoWeek(new Date(2027, 0, 1)) === 53 && c.isoWeek(new Date(2027, 0, 4)) === 1, 'ISO week numbers');
+  const lay = c.roadLayout(390);
+  must(lay.per === 3 && lay.rows === 4, 'a phone gets three months per row of the road');
+});
+
 await check('model: pages form a tree; a page whose parent is gone is still shown at the top', async () => {
   const top = model.newPage({ title: 'Top' });
   const kid = model.newPage({ title: 'Kid', parent: top.id });

@@ -21,6 +21,14 @@
 //   node tools/data.mjs events [CALENDAR_ID|primary] [FROM] [TO]   ISO dates; default: the next 7 days
 //   node tools/data.mjs event-put FILE|JSON      { id?, title, start, end?, allDay?, description?, location? }
 //   node tools/data.mjs event-delete ID          (Dashboard calendar only)
+//   node tools/data.mjs calendar-sync [DAYS]     copies events from his calendars into the workspace (see below)
+//
+// calendar-sync: every item of kind "calendar" with a calendarId is a
+// calendar to copy (add or remove such items to choose; "hidden: true" only
+// hides it in the app). Its events from 31 days ago to DAYS ahead (default
+// 400) become items of kind "event" (source "calendar"); changed ones are
+// updated, ones gone from the calendar are deleted. Events Claude adds from
+// mail (source "mail") are left alone.
 //
 // Push sends whole items. Start from the copy in workspace.json, change what
 // you need, and keep id and kind. updatedAt is set here, newer than the copy
@@ -32,6 +40,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -148,6 +157,62 @@ switch (cmd) {
   case 'events': print(await call({ action: 'events', calendarId: a1 || 'primary', from: a2, to: a3 })); break;
   case 'event-put': print(await call({ action: 'eventPut', event: readJSONArg(a1) })); break;
   case 'event-delete': print(await call({ action: 'eventDelete', id: a1 })); break;
+
+  case 'calendar-sync': {
+    const days = Number(a1) || 400;
+    const j = await call({ action: 'pull', since: 0 });
+    const live = j.items.filter((it) => !it.deleted);
+    const cals = live.filter((it) => it.kind === 'calendar' && it.calendarId);
+    if (!cals.length) fail('No calendar items with a calendarId in the workspace yet: add one per calendar to copy.');
+    const from = new Date(Date.now() - 31 * 864e5), to = new Date(Date.now() + days * 864e5);
+    const old = new Map(live.filter((it) => it.kind === 'event' && it.source === 'calendar').map((it) => [it.id, it]));
+    const keep = new Set();
+    const out = [];
+    const FIELDS = ['title', 'start', 'end', 'allDay', 'location', 'note', 'url', 'cal'];
+    const report = {};
+    for (const c of cals) {
+      let n = 0;
+      // the whole window at once; split it in two when an answer is full
+      const fetchRange = async (s, e) => {
+        const r = await call({ action: 'events', calendarId: c.calendarId, from: s.toISOString(), to: e.toISOString(), max: 250 });
+        if (r.events.length < 250 || e - s < 2 * 864e5) return r.events;
+        const mid = new Date((+s + +e) / 2);
+        return [...await fetchRange(s, mid), ...await fetchRange(mid, e)];
+      };
+      for (const ev of await fetchRange(from, to)) {
+        if (ev.status === 'cancelled') continue;
+        const id = 'ev-' + createHash('sha1').update(c.calendarId + '|' + ev.id).digest('hex').slice(0, 16);
+        if (keep.has(id)) continue;              // seen in both halves
+        keep.add(id);
+        n++;
+        const item = { id, kind: 'event', source: 'calendar', cal: c.id, title: ev.title, start: ev.start, end: ev.end,
+          allDay: !!ev.allDay, location: ev.location || '', note: String(ev.description || '').slice(0, 2000), url: ev.link || '' };
+        const prev = old.get(id);
+        if (prev && FIELDS.every((k) => JSON.stringify(prev[k] ?? '') === JSON.stringify(item[k] ?? ''))) continue;
+        out.push(prev ? { ...prev, ...item } : item);
+      }
+      report[c.name || c.calendarId] = n;
+    }
+    // gone from a calendar that is still copied, inside the window: delete
+    const copied = new Set(cals.map((c) => c.id));
+    for (const it of old.values()) {
+      if (keep.has(it.id) || !copied.has(it.cal)) continue;
+      const t = new Date(it.start);
+      if (t >= from && t < to) out.push({ id: it.id, kind: 'event', deleted: true });
+    }
+    // events of calendars no longer copied
+    for (const it of old.values()) if (!copied.has(it.cal)) out.push({ id: it.id, kind: 'event', deleted: true });
+    let t = Date.now();
+    const items = out.map((it) => ({ ...it, updatedAt: Math.max(t++, (old.get(it.id)?.updatedAt || 0) + 1) }));
+    for (const it of items) delete it.rev;
+    let accepted = 0;
+    for (let i = 0; i < items.length; i += 200) {
+      const r = await call({ action: 'push', since: 0, items: items.slice(i, i + 200) });
+      accepted += r.accepted.length;
+    }
+    print({ calendars: report, changed: items.filter((x) => !x.deleted).length, deleted: items.filter((x) => x.deleted).length, accepted });
+    break;
+  }
 
   default:
     console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));

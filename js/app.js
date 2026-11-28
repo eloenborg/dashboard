@@ -10,6 +10,7 @@
 //   pages                every page (the phone's Pages tab)
 //   search               search
 //   settings             settings
+//   calendar             the calendar (js/calendar.js)
 //
 // One layout for both: CSS shows the sidebar from 900px wide, and the top
 // bar and tab bar below that.
@@ -20,11 +21,12 @@ import { initSettings, renderSettings } from './settings.js';
 import { initEditor, openPage, closePage, currentPage, flush as flushPage } from './editor.js';
 import { initRecord, openRecord, closeRecord } from './record.js';
 import { renderView } from './views.js';
+import { initCalendar, renderCalendar } from './calendar.js';
 import { loadData, startSync, sync, isDataConnected, get, all } from './data.js';
 import { newPage, childPages, topPages, search, titleOf } from './model.js';
 import { $, $$, esc, icon, fillIcons, isDesktop, closeMenu, menuOpen } from './ui.js';
 
-const SCREEN_OF = { today: 'home', ask: 'home', page: 'page', view: 'view', pages: 'pages', search: 'pages', settings: 'settings' };
+const SCREEN_OF = { today: 'home', ask: 'home', page: 'page', view: 'view', pages: 'pages', search: 'pages', settings: 'settings', calendar: 'calendar' };
 const UI_KEY = 'dashboard.ui';
 
 let main = { name: 'today' };     // the screen behind the item panel
@@ -78,6 +80,7 @@ function showMain(route) {
     if (route.name === 'search') setTimeout(() => $('#searchInput').focus(), 30);
   }
   else if (route.name === 'settings') renderSettings();
+  else if (route.name === 'calendar') renderCalendar();
   else renderHome();
   if (route.name === 'ask') {
     setTimeout(() => { $('#askCard').scrollIntoView({ block: 'center' }); $('#askText').focus(); }, 30);
@@ -106,7 +109,7 @@ function chrome() {
   const route = parse();
   const at = route.name === 'record' ? main : route;
   const home = at.name === 'today' || at.name === 'ask';
-  const tabRoot = home || at.name === 'pages' || at.name === 'search';
+  const tabRoot = home || at.name === 'pages' || at.name === 'search' || at.name === 'calendar';
   $('#brand').hidden = !home;
   $('#backBtn').hidden = tabRoot;
   const tt = $('#topTitle');
@@ -116,7 +119,7 @@ function chrome() {
   $('#settingsBtn').setAttribute('aria-pressed', String(at.name === 'settings'));
   document.title = home ? 'Dashboard' : titleFor(at) + ' · Dashboard';
 
-  const tab = at.name === 'ask' ? 'ask' : home ? 'today' : (at.name === 'search' || at.name === 'page' || at.name === 'pages' || at.name === 'view') ? 'pages' : '';
+  const tab = at.name === 'ask' ? 'ask' : home ? 'today' : at.name === 'calendar' ? 'calendar' : (at.name === 'search' || at.name === 'page' || at.name === 'pages' || at.name === 'view') ? 'pages' : '';
   for (const b of $$('#tabbar .tab')) b.classList.toggle('on', b.dataset.tab === tab);
   for (const b of $$('#sidebar [data-go]')) b.classList.toggle('on', b.dataset.go === hashOf(at) || (b.dataset.go === '#today' && at.name === 'today'));
   for (const a of $$('#pageTree .t-row')) a.classList.toggle('on', at.name === 'page' && a.dataset.id === at.id);
@@ -126,7 +129,7 @@ function chrome() {
 function titleFor(r) {
   if (r.name === 'page') return titleOf(get(r.id)) || 'Page';
   if (r.name === 'view') return titleOf(get(r.id)) || 'View';
-  return { pages: 'Pages', search: 'Pages', settings: 'Settings' }[r.name] || 'Dashboard';
+  return { pages: 'Pages', search: 'Pages', settings: 'Settings', calendar: 'Calendar' }[r.name] || 'Dashboard';
 }
 
 // Where the phone's back button goes: one step up, not browser history.
@@ -296,6 +299,7 @@ function init() {
   initSettings();
   initEditor();
   initRecord();
+  initCalendar();
   registerServiceWorker();
   loadData().then(() => {
     const r = parse();

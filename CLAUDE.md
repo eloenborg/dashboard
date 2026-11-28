@@ -54,6 +54,8 @@ If a push to `main` is refused, push your branch, open a pull request, and tell 
 | `js/editor.js` | The page editor: blocks, Markdown shortcuts, the "/" menu, pasting lines as blocks, block and page menus. |
 | `js/views.js` | View archetypes (table, board, list, gallery, checklist) and one-off `result` views; how values are shown. |
 | `js/record.js` | One item: side panel (computer) or full screen (phone), with an editor per field type. |
+| `js/calendar.js` | Calendar (`#calendar`): one screen with six zoom levels (day, week, month, 3 months, year, the years as a winding road). Pinch, Ctrl + wheel, − / + buttons or keys. |
+| `js/holidays.js` | Public holidays (rules per country, `COUNTRY` in `js/config.js`) and seasons, worked out for any year. |
 | `js/home.js` | Today: greeting, daily brief, pinned pages and views, recent pages, Ask Claude box, "new version is online" note. |
 | `js/sample.js` | The made-up sample page (Settings, "Try it out"). Neutral on purpose. |
 | `js/settings.js` | Settings: version and Force update; Drive connection; Ask Claude connection; sample. |
@@ -95,9 +97,16 @@ All in `js/model.js`; this is the contract between the app and your background r
 - `record` `{ type, title, values: { key: value }, links: [{ to, rel }], notes }`. Use `links` for relations that are not a field.
 - `view` `{ title, archetype, source: { type, filter: [{ field, op, value }], sort: [{ field, dir }], group }, show: [keys], keep, page, pinned, result }`. Archetypes: `table board list gallery checklist`. Filter ops: `is not in has empty notEmpty lt gt contains`. A one-off view has `keep: false`; a researched one carries `result: { columns: [{ key, label, type }], rows: [{...}], note, sources: [{ title, url }], at }` instead of a record source (column type `url` links out, `ref` links to an item).
 - `brief` `{ date: 'YYYY-MM-DD', title, summary, sections: [{ title, items: [{ text, url, source }] }] }`. Today shows the newest.
+- `event` `{ title, start, end, allDay, location, note, url, cal, color, source, attention, mark }`. All-day: `start`/`end` are `YYYY-MM-DD` and `end` is the day after (as in Google). Timed: ISO times. `source: 'calendar'` items are written only by `calendar-sync`; ones you find in his mail get `source: 'mail'` and an id starting `mail-`. `attention: true` for things he must do or check (bills, deadlines, pick-ups); `mark: true` puts an event on the year and road views.
+- `calendar` `{ name, color, calendarId, hidden }`: a Google calendar copied into the workspace. `hidden: true` hides it in the app only.
+- `period` `{ title, start, end, group, color, note }`: a stretch of days (`end` is the last day), e.g. school and daycare holidays. Shown on the road, year and 3-month views, one colour per `group`.
 - `pinned: true` on a page or view puts it on Today.
 
 When you organize his data: make a `type` per kind of thing, with the fields it needs and status options for its states; turn loose lines on his pages into `record`s (keep his words in `title` and `notes`); link related records; add `view`s and put `view` blocks on the pages where the items came from, so his page still reads well. Don't delete his writing unless it is now fully shown by a view on the same page.
+
+## Keeping the calendar up to date
+
+When you run with the Claude key (Ask Claude runs, the daily brief, or when he asks): run `node tools/data.mjs calendar-sync`, then look through mail since the last look (`mail-search "newer_than:3d -category:promotions -category:social"`) for upcoming things he must do or check: payments and due dates, bookings and tickets, pick-ups, appointments, replies someone waits for. Add each as a `source: 'mail'` event on its date (today if it has none), with `attention: true` when he must act, and a short `note` saying what the mail said. Don't copy whole mails. Update school and daycare `period`s when new plans are out.
 
 ## Saved data in the app
 
@@ -112,7 +121,7 @@ THIS IS CRITICAL. Everything Ebbe puts in the app, and everything you work out f
 - **The gateway** (`gateway/gateway.gs`, a Google Apps Script in his account) is the only way in. It also keeps Ask Claude pictures in its own subfolder (the app key may add them, only the Claude key may read them). Google enforces its permissions (`gateway/appsscript.json`): Drive files it created only (the data folder), Gmail read-only, all calendars read-only, and full control only of calendars it created (the "Dashboard" calendar). Do not widen these scopes or switch to `DriveApp`/`GmailApp`/`CalendarApp`; the tests fail if you do. Changing them needs Ebbe's agreement first.
 - **Two keys.** The app key is on his devices and reaches the data only. The Claude key can also read mail and calendars and lives only in the Claude task's environment settings (`DASHBOARD_GATEWAY_URL`, `DASHBOARD_GATEWAY_KEY`).
 - **The format.** One file, `workspace.json`: a flat set of items `{ id, kind, updatedAt, ... }`. The gateway adds `rev`, `by` (`app` or `claude`), `createdAt` and `createdBy`. The newer `updatedAt` wins. A delete is a tombstone `{ id, kind, deleted: true }`. The day's first write saves a backup in `backups/` (kept 30 days).
-- **In your session**, use `node tools/data.mjs` (run it without arguments for help): `pull` writes everything to `~/dashboard-data/workspace.json`, outside the repo. Edit copies of items there and `push` them. `file-get` fetches a picture sent with an Ask Claude message. `mail-search`, `mail-get`, `calendars` and `events` read. `event-put` and `event-delete` work on the Dashboard calendar only. Never copy data into the repo directory, and delete `~/dashboard-data` when you are done.
+- **In your session**, use `node tools/data.mjs` (run it without arguments for help): `pull` writes everything to `~/dashboard-data/workspace.json`, outside the repo. Edit copies of items there and `push` them. `file-get` fetches a picture sent with an Ask Claude message. `mail-search`, `mail-get`, `calendars` and `events` read. `event-put` and `event-delete` work on the Dashboard calendar only. `calendar-sync` copies his calendars (the `calendar` items) into `event` items; it is fast and changes only what changed. Never copy data into the repo directory, and delete `~/dashboard-data` when you are done.
 - **Not set up yet?** If `DASHBOARD_GATEWAY_URL` is missing, say so and point Ebbe to README, "Let Claude reach the data". If the gateway can't be reached, the task's cloud environment must allow `script.google.com` and `script.googleusercontent.com` (README, same section). Don't fall back to the claude.ai Google connectors: Ebbe chose not to give them access.
 - **On each device**, the app keeps a copy in IndexedDB so it works offline, and syncs through the gateway (`js/data.js`).
 

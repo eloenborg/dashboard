@@ -4,6 +4,7 @@
 //
 // Item kinds (each is an item in js/data.js):
 //   page    { title, icon, parent, order, blocks: [block] }
+//   event, calendar, period   the calendar's items: see js/calendar.js
 //   type    a kind of record, usually worked out by Claude:
 //           { name, plural, icon, fields: [field] }
 //   record  one thing of a type: { type, title, values: { fieldKey: value }, links: [{ to, rel }], notes }

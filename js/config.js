@@ -10,3 +10,6 @@ export const OWNER = 'Ebbe';
 
 // The time zone used when the app writes a time for Claude.
 export const TIME_ZONE = 'Europe/Copenhagen';
+
+// Whose public holidays the calendar shows (rules in js/holidays.js).
+export const COUNTRY = 'DK';

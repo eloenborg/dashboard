@@ -28,6 +28,9 @@
   <button id="sideToday" class="side-item" type="button" data-go="#today">
     <span class="ico" data-icon="today"></span><span>Today</span>
   </button>
+  <button id="sideCalendar" class="side-item" type="button" data-go="#calendar">
+    <span class="ico" data-icon="calendar"></span><span>Calendar</span>
+  </button>
   <button id="sideAsk" class="side-item" type="button" data-go="#ask">
     <span class="ico" data-icon="ask"></span><span>Ask Claude</span>
   </button>
@@ -92,6 +95,26 @@
 
   <section id="askHistory" class="history"></section>
 </main>
+
+<!-- ============ CALENDAR ============ -->
+<main id="screen-calendar" class="screen cal-screen" hidden>
+  <div class="cal-bar">
+    <h1 id="calTitle" class="cal-title"></h1>
+    <div class="cal-nav">
+      <button id="calPrev" class="iconbtn" type="button" aria-label="Earlier">‹</button>
+      <button id="calToday" class="quiet small" type="button">Today</button>
+      <button id="calNext" class="iconbtn" type="button" aria-label="Later">›</button>
+    </div>
+    <div class="cal-zoom">
+      <button id="calOut" class="iconbtn" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
+      <div id="calLevels" class="seg cal-levels" role="group" aria-label="Zoom level"></div>
+      <button id="calIn" class="iconbtn" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+    </div>
+  </div>
+  <div id="calStage" class="cal-stage"></div>
+  <p class="hint cal-hint">Pinch, or hold Ctrl and scroll, to zoom.</p>
+</main>
+<div id="calPop" class="cal-pop" hidden></div>
 
 <!-- ============ A PAGE ============ -->
 <main id="screen-page" class="screen wide" hidden>
@@ -206,6 +229,7 @@
 <!-- ============ PHONE TAB BAR ============ -->
 <nav id="tabbar" aria-label="Main">
   <button class="tab" type="button" data-tab="today" data-go="#today"><span class="ico" data-icon="today"></span><span>Today</span></button>
+  <button class="tab" type="button" data-tab="calendar" data-go="#calendar"><span class="ico" data-icon="calendar"></span><span>Calendar</span></button>
   <button class="tab" type="button" data-tab="pages" data-go="#pages"><span class="ico" data-icon="pages"></span><span>Pages</span></button>
   <button class="tab" type="button" data-tab="ask" data-go="#ask"><span class="ico" data-icon="ask"></span><span>Ask</span></button>
 </nav>
