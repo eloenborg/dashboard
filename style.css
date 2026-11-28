@@ -350,10 +350,11 @@ body { padding-top: calc(var(--top-h) + var(--safe-top)); padding-bottom: calc(v
 .today-head { margin: 4px 0 18px; }
 .today-head h1 { margin-bottom: 2px; }
 .note-line { background: var(--note); border: 1px solid var(--note-line); border-radius: 12px; padding: 9px 12px; font-size: 15px; margin-bottom: 16px; }
+.screen-note { box-sizing: border-box; width: calc(100% - 32px); max-width: 688px; margin: 16px auto 0; }
 .update-note {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
   background: var(--note); border: 2px solid var(--note-line); border-radius: 14px;
-  padding: 10px 12px; margin-bottom: 16px; font-size: 15px;
+  padding: 10px 12px; font-size: 15px;
 }
 
 .brief { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; margin-bottom: 8px; }
@@ -379,7 +380,7 @@ body { padding-top: calc(var(--top-h) + var(--safe-top)); padding-bottom: calc(v
 .recent .r-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .recent .ico { color: var(--faint); }
 
-.ask { margin-top: 26px; }
+.ask { margin-top: 4px; }
 .history h2 { margin-top: 6px; }
 .ask-item { border-top: 1px solid var(--line); padding: 10px 2px; }
 .ask-text { white-space: pre-wrap; overflow-wrap: anywhere; }

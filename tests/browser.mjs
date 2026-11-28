@@ -80,9 +80,12 @@ await phone.route('https://script.google.com/**', fakeRelay);
 const page = await phone.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 
-await check('the home screen (Today) greets and offers Ask Claude', async () => {
+await check('the home screen (Today) greets; Ask Claude has its own screen', async () => {
   await page.goto(BASE);
   await page.waitForFunction(() => /^Good /.test(document.querySelector('#todayHello').textContent));
+  must(!(await page.isVisible('#askText')), 'no Ask Claude box on Today');
+  await page.click('[data-tab="ask"]');
+  await page.waitForSelector('#screen-ask:not([hidden]) #askText');
   const mode = await page.textContent('#askMode');
   must(/Opens the Claude app/.test(mode), 'not-connected hint: ' + mode);
 });
@@ -111,8 +114,9 @@ await check('Save and test: the right passphrase connects', async () => {
 });
 
 await check('Ask Claude sends the message and links to the Claude session', async () => {
-  await page.click('[data-tab="today"]');
-  await page.waitForSelector('#screen-home:not([hidden])');
+  await page.click('[data-tab="ask"]');
+  await page.waitForSelector('#screen-ask:not([hidden])');
+  must(await page.$eval('#screen-home', (el) => !el.querySelector('#askText')), 'the box is not on Today');
   must(/straight to Claude/.test(await page.textContent('#askMode')), 'connected hint');
   await page.fill('#askText', 'Add a clock');
   await page.click('#askSend');
@@ -166,10 +170,10 @@ await check('the app opens offline after one visit', async () => {
   await page.evaluate(() => { location.hash = '#today'; });
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();                       // now controlled by the service worker
-  await page.waitForSelector('#askText');
+  await page.waitForSelector('#todayHello');
   await phone.setOffline(true);
   await page.reload();
-  await page.waitForSelector('#askText');
+  await page.waitForSelector('#todayHello');
   await phone.setOffline(false);
 });
 
@@ -184,7 +188,7 @@ await check('a newer version online shows the note, and Update now loads it', as
     await page.waitForSelector('#updateNote:not([hidden])', { timeout: 10000 });
     must(new RegExp('v' + (BUILD + 1)).test(await page.textContent('#updateText')), await page.textContent('#updateText'));
     await Promise.all([page.waitForEvent('load'), page.click('#updateNow')]);
-    await page.waitForSelector('#askText');
+    await page.waitForSelector('#todayHello');
     await page.evaluate(() => { location.hash = '#settings'; });
     await page.waitForSelector('#screen-settings:not([hidden])');
     const shown = await page.textContent('#setBuild');
@@ -214,7 +218,7 @@ const dpage = await desk.newPage();
 dpage.on('pageerror', (e) => errors.push(e.message));
 
 await check('not connected: Ask Claude opens Claude Code with the message and repo filled in', async () => {
-  await dpage.goto(BASE);
+  await dpage.goto(BASE + '#ask');
   await dpage.fill('#askText', 'What can you add here?');
   const [tab] = await Promise.all([desk.waitForEvent('page'), dpage.click('#askSend')]);
   const url = new URL(tab.url());

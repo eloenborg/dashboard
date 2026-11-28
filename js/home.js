@@ -1,5 +1,6 @@
 // Today: the quick look. A greeting, the latest daily brief, pinned pages
-// and views (in #dashboard), recent pages, and the Ask Claude box.
+// and views (in #dashboard) and recent pages.
+// Ask Claude (#ask, its own screen): the box and the recent messages.
 //
 // The brief is an item of kind "brief" that Claude's morning run writes:
 //   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source }] }] }
@@ -72,6 +73,9 @@ export function initHome() {
 
 export function renderHome() {
   renderToday();
+}
+
+export function renderAsk() {
   $('#askMode').textContent = isConnected()
     ? 'Goes straight to Claude.'
     : 'Opens the Claude app with your message filled in. Connect in Settings to skip that step.';

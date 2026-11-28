@@ -3,7 +3,7 @@
 //
 // Addresses (the part after #):
 //   today (or nothing)   Today: brief, pinned, recent, Ask Claude
-//   ask                  Today, with the Ask Claude box ready to type in
+//   ask                  Ask Claude: the box and the recent messages
 //   p/<id>               a page
 //   r/<id>               an item, in a side panel (computer) or full screen (phone)
 //   v/<id>               a view on its own
@@ -16,7 +16,7 @@
 // bar and tab bar below that.
 
 import { registerServiceWorker } from './update.js';
-import { initHome, renderHome } from './home.js';
+import { initHome, renderHome, renderAsk } from './home.js';
 import { initSettings, renderSettings } from './settings.js';
 import { initEditor, openPage, closePage, currentPage, flush as flushPage } from './editor.js';
 import { initRecord, openRecord, closeRecord } from './record.js';
@@ -26,7 +26,7 @@ import { loadData, startSync, sync, isDataConnected, get, all } from './data.js'
 import { newPage, childPages, topPages, search, titleOf } from './model.js';
 import { $, $$, esc, icon, fillIcons, isDesktop, closeMenu, menuOpen } from './ui.js';
 
-const SCREEN_OF = { today: 'home', ask: 'home', page: 'page', view: 'view', pages: 'pages', search: 'pages', settings: 'settings', calendar: 'calendar' };
+const SCREEN_OF = { today: 'home', ask: 'ask', page: 'page', view: 'view', pages: 'pages', search: 'pages', settings: 'settings', calendar: 'calendar' };
 const UI_KEY = 'dashboard.ui';
 
 let main = { name: 'today' };     // the screen behind the item panel
@@ -64,7 +64,7 @@ function show() {
 function showMain(route) {
   const key = hashOf(route);
   const screen = SCREEN_OF[route.name];
-  if (shownMain === key && route.name !== 'ask') return;
+  if (shownMain === key) return;
   if (currentPage() && !(route.name === 'page' && route.id === currentPage())) closePage();
   shownMain = key;
   for (const el of $$('.screen')) el.hidden = el.id !== 'screen-' + screen;
@@ -81,13 +81,11 @@ function showMain(route) {
   }
   else if (route.name === 'settings') renderSettings();
   else if (route.name === 'calendar') renderCalendar();
+  else if (route.name === 'ask') renderAsk();
   else renderHome();
-  if (route.name === 'ask') {
-    setTimeout(() => { $('#askCard').scrollIntoView({ block: 'center' }); $('#askText').focus(); }, 30);
-  } else {
-    $('#main').scrollTop = 0;
-    window.scrollTo(0, 0);
-  }
+  $('#main').scrollTop = 0;
+  window.scrollTo(0, 0);
+  if (route.name === 'ask') setTimeout(() => $('#askText').focus(), 30);
 }
 
 function openPanel(id) {
@@ -108,14 +106,14 @@ function closePanel() {
 function chrome() {
   const route = parse();
   const at = route.name === 'record' ? main : route;
-  const home = at.name === 'today' || at.name === 'ask';
-  const tabRoot = home || at.name === 'pages' || at.name === 'search' || at.name === 'calendar';
+  const home = at.name === 'today';
+  const tabRoot = home || at.name === 'ask' || at.name === 'pages' || at.name === 'search' || at.name === 'calendar';
   $('#brand').hidden = !home;
   $('#backBtn').hidden = tabRoot;
   const tt = $('#topTitle');
   tt.hidden = home;
   tt.textContent = titleFor(at);
-  $('#settingsBtn').hidden = !(home || at.name === 'settings');
+  $('#settingsBtn').hidden = !(home || at.name === 'ask' || at.name === 'settings');
   $('#settingsBtn').setAttribute('aria-pressed', String(at.name === 'settings'));
   document.title = home ? 'Dashboard' : titleFor(at) + ' · Dashboard';
 
@@ -129,7 +127,7 @@ function chrome() {
 function titleFor(r) {
   if (r.name === 'page') return titleOf(get(r.id)) || 'Page';
   if (r.name === 'view') return titleOf(get(r.id)) || 'View';
-  return { pages: 'Pages', search: 'Pages', settings: 'Settings', calendar: 'Calendar' }[r.name] || 'Dashboard';
+  return { pages: 'Pages', search: 'Pages', settings: 'Settings', calendar: 'Calendar', ask: 'Ask Claude' }[r.name] || 'Dashboard';
 }
 
 // Where the phone's back button goes: one step up, not browser history.

@@ -57,13 +57,14 @@
 
 <div id="main">
 
+<!-- Shown above every screen when a newer version is online. -->
+<p id="updateNote" class="update-note screen-note" hidden>
+  <span id="updateText"></span>
+  <button id="updateNow" class="primary small" type="button">Update now</button>
+</p>
+
 <!-- ============ TODAY ============ -->
 <main id="screen-home" class="screen">
-
-  <p id="updateNote" class="update-note" hidden>
-    <span id="updateText"></span>
-    <button id="updateNow" class="primary small" type="button">Update now</button>
-  </p>
 
   <section class="today-head">
     <h1 id="todayHello">Hello.</h1>
@@ -79,6 +80,10 @@
 
   <section id="recentPages"></section>
 
+</main>
+
+<!-- ============ ASK CLAUDE ============ -->
+<main id="screen-ask" class="screen" hidden>
   <section id="askCard" class="card ask">
     <label for="askText" class="card-title">Ask Claude</label>
     <textarea id="askText" rows="3" placeholder="Ask for a change, a view of your data, or anything else"
