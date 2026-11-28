@@ -95,8 +95,15 @@ export function buildIndex(items) {
   return { byDay, periods, groups, marks: marks.sort(byStart), cals };
 }
 
+// An event's colour, as the calendar shows it: its own, its calendar's,
+// amber for ones found in mail, else blue. Also used by the brief on Today.
+export function eventColor(it, cal) {
+  return COLORS.includes(it.color) ? it.color : cal && COLORS.includes(cal.color) ? cal.color : it.source === 'mail' ? 'amber' : 'blue';
+}
+export const isColor = (c) => COLORS.includes(c);
+
 function occurrence(it, cal) {
-  const color = COLORS.includes(it.color) ? it.color : cal && COLORS.includes(cal.color) ? cal.color : it.source === 'mail' ? 'amber' : 'blue';
+  const color = eventColor(it, cal);
   const base = { id: it.id, item: it, title: it.title || 'Untitled', color, attention: !!it.attention, mark: !!it.mark, calName: cal ? cal.name : '' };
   const timed = !it.allDay && /T\d/.test(String(it.start));
   if (!timed) {

@@ -2,4 +2,4 @@
 // change you push. Settings compares this number with the copy online to tell
 // whether Force update will bring anything new, and the service worker's cache
 // is named after it.
-export const BUILD = 14;
+export const BUILD = 15;

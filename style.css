@@ -39,6 +39,7 @@
   --accent: #74AEEA;
   --good: #5FC68B;
   --bad: #F2808F;
+  --urgent: #FF3B3B;   /* time-sensitive lines in the brief */
   --note: #332C1C;
   --note-line: #7D6427;
   --on-ink: #15171C;
@@ -75,6 +76,7 @@
   --accent: #2B6CB0;
   --good: #2F7D4F;
   --bad: #B4233C;
+  --urgent: #E00000;
   --note: #FFF4D6;
   --note-line: #E9C46A;
   --on-ink: #FFFFFF;
@@ -110,6 +112,7 @@
     --accent: #2B6CB0;
     --good: #2F7D4F;
     --bad: #B4233C;
+    --urgent: #E00000;
     --note: #FFF4D6;
     --note-line: #E9C46A;
     --on-ink: #FFFFFF;
@@ -367,6 +370,12 @@ body { padding-top: calc(var(--top-h) + var(--safe-top)); padding-bottom: calc(v
 .brief-sec li:last-child { border-bottom: 0; }
 .brief-sec a { color: var(--ink); text-decoration-color: var(--line); text-underline-offset: 3px; }
 .brief-sec a.brief-src { color: var(--ink-2); white-space: nowrap; }
+/* A line takes its calendar colour (c-<name>); time-sensitive ones are bright
+   red. Dates and times stay plain ink, in bold. */
+.brief-sec .bt[class*="c-"] { color: var(--c); }
+.brief-sec .bt.urgent { color: var(--urgent); }
+.brief-sec .bt a { color: inherit; }
+.brief-sec .bt b.when { color: var(--ink); font-weight: 700; }
 @media (min-width: 900px) { .brief-sections { grid-template-columns: 1fr 1fr; } }
 
 .pins { display: grid; gap: 14px; }

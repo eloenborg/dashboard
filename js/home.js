@@ -3,12 +3,16 @@
 // Ask Claude (#ask, its own screen): the box and the recent messages.
 //
 // The brief is an item of kind "brief" that Claude's morning run writes:
-//   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source, sourceUrl, ref }] }] }
+//   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source, sourceUrl, ref, color, attention }] }] }
+// A line is coloured as in the calendar (its own colour, else its ref event's,
+// else amber for mail); attention (its own or the event's) makes it bright red.
+// Dates and times in the text are bold and keep the plain text colour.
 
 import { state } from './store.js';
 import * as data from './data.js';
 import { renderView } from './views.js';
 import { titleOf } from './model.js';
+import { eventColor, isColor } from './calendar.js';
 import { BUILD } from './version.js';
 import { ask, isConnected, preparePicture, MAX_PICTURES } from './ask.js';
 import { onlineBuild, forceUpdate } from './update.js';
@@ -230,10 +234,37 @@ function renderBrief() {
     '<div class="brief-sections">' + (b.sections || []).map((s) =>
       '<section class="brief-sec"><h3>' + esc(s.title || '') + '</h3><ul>' + (s.items || []).map((it) => {
         const href = safeHref(it.url);
-        const text = esc(it.text || '');
-        return '<li>' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + text + '</a>' : text) +
-          sourceLabel(it) + '</li>';
+        const text = boldWhen(esc(it.text || ''));
+        return '<li><span class="' + lineClass(it) + '">' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + text + '</a>' : text) +
+          '</span>' + sourceLabel(it) + '</li>';
       }).join('') + '</ul></section>').join('') + '</div>';
+}
+
+// The colour class of a brief line (see the top of this file).
+function lineClass(it) {
+  const ref = it.ref ? data.get(it.ref) : null;
+  const ev = ref && ref.kind === 'event' ? ref : null;
+  if (it.attention || it.urgent || (ev && ev.attention)) return 'bt urgent';
+  let c = isColor(it.color) ? it.color : '';
+  if (!c && ev) c = eventColor(ev, ev.cal ? data.get(ev.cal) : null);
+  if (!c && /mail/i.test(it.source || '')) c = 'amber';
+  return c ? 'bt c-' + c : 'bt';
+}
+
+// Bold the dates and times in an (already escaped) brief line.
+const MON = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)(?:[a-z]+|\\.)?';
+const WDAY = '(?:Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)(?:day|nesday|sday|urday|\\.)?';
+const WHEN = new RegExp('\\b(?:' + [
+  '\\d{4}-\\d{2}-\\d{2}',                                                   // 2026-12-01
+  '(?:' + WDAY + ',?\\s+)?\\d{1,2}(?:st|nd|rd|th)?\\.?\\s+' + MON + '(?:\\s+\\d{4})?',  // Tue 1 Dec, 13 November
+  '(?:' + WDAY + ',?\\s+)?' + MON + '\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?',   // Dec 1
+  '(?:the\\s+)?\\d{1,2}(?:st|nd|rd|th)',                                          // the 10th
+  '\\d{1,2}[:.]\\d{2}(?:\\s*(?:–|-|to)\\s*\\d{1,2}[:.]\\d{2})?(?:\\s*[ap]m)?(?![\\d.,])', // 9:00, 9.00–10.30
+  '\\d{1,2}\\s*[apAP][mM]',                                                          // 9am
+  WDAY, '[Tt]oday', '[Tt]onight', '[Tt]omorrow', '[Yy]esterday',
+].join('|') + ')(?![\\w])', 'g');
+function boldWhen(html) {
+  return html.replace(WHEN, (m) => '<b class="when">' + m + '</b>');
 }
 
 // The little "mail" / "calendar" label after a brief line. It links to the
