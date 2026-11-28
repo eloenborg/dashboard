@@ -80,9 +80,9 @@ await phone.route('https://script.google.com/**', fakeRelay);
 const page = await phone.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 
-await check('the home screen (Today) greets; Ask Claude has its own screen', async () => {
+await check('the home screen (Today) shows the brief; Ask Claude has its own screen', async () => {
   await page.goto(BASE);
-  await page.waitForFunction(() => /^Good /.test(document.querySelector('#todayHello').textContent));
+  await page.waitForSelector('#briefCard h2');
   must(!(await page.isVisible('#askText')), 'no Ask Claude box on Today');
   await page.click('[data-tab="ask"]');
   await page.waitForSelector('#screen-ask:not([hidden]) #askText');
@@ -170,10 +170,10 @@ await check('the app opens offline after one visit', async () => {
   await page.evaluate(() => { location.hash = '#today'; });
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();                       // now controlled by the service worker
-  await page.waitForSelector('#todayHello');
+  await page.waitForSelector('#briefCard h2');
   await phone.setOffline(true);
   await page.reload();
-  await page.waitForSelector('#todayHello');
+  await page.waitForSelector('#briefCard h2');
   await phone.setOffline(false);
 });
 
@@ -188,7 +188,7 @@ await check('a newer version online shows the note, and Update now loads it', as
     await page.waitForSelector('#updateNote:not([hidden])', { timeout: 10000 });
     must(new RegExp('v' + (BUILD + 1)).test(await page.textContent('#updateText')), await page.textContent('#updateText'));
     await Promise.all([page.waitForEvent('load'), page.click('#updateNow')]);
-    await page.waitForSelector('#todayHello');
+    await page.waitForSelector('#briefCard h2');
     await page.evaluate(() => { location.hash = '#settings'; });
     await page.waitForSelector('#screen-settings:not([hidden])');
     const shown = await page.textContent('#setBuild');

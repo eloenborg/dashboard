@@ -3,7 +3,7 @@
 // Ask Claude (#ask, its own screen): the box and the recent messages.
 //
 // The brief is an item of kind "brief" that Claude's morning run writes:
-//   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source }] }] }
+//   { date: 'YYYY-MM-DD', title, sections: [{ title, items: [{ text, url, source, sourceUrl, ref }] }] }
 
 import { state } from './store.js';
 import * as data from './data.js';
@@ -193,10 +193,6 @@ async function checkForUpdate() {
 // ---------------------------------------------------------------- the quick look
 
 function renderToday() {
-  const now = new Date();
-  const h = now.getHours();
-  $('#todayHello').textContent = h < 5 ? 'Good night.' : h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.';
-  $('#todayDate').textContent = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   renderLocalNote();
   renderBrief();
   renderPinned();
@@ -236,8 +232,20 @@ function renderBrief() {
         const href = safeHref(it.url);
         const text = esc(it.text || '');
         return '<li>' + (href ? '<a href="' + esc(href) + '" target="_blank" rel="noopener">' + text + '</a>' : text) +
-          (it.source ? ' <span class="muted small">' + esc(it.source) + '</span>' : '') + '</li>';
+          sourceLabel(it) + '</li>';
       }).join('') + '</ul></section>').join('') + '</div>';
+}
+
+// The little "mail" / "calendar" label after a brief line. It links to the
+// exact mail or event when the brief gives one: sourceUrl, or ref (an item
+// in the workspace, e.g. an event, whose url is used).
+function sourceLabel(it) {
+  if (!it.source && !it.sourceUrl && !it.ref) return '';
+  const label = esc(it.source || 'source');
+  const ref = it.ref ? data.get(it.ref) : null;
+  const href = safeHref(it.sourceUrl) || safeHref(ref && ref.url);
+  if (href) return ' <a class="brief-src small" href="' + esc(href) + '" target="_blank" rel="noopener">' + label + ' ↗</a>';
+  return ' <span class="muted small">' + label + '</span>';
 }
 
 function renderPinned() {
@@ -245,7 +253,7 @@ function renderPinned() {
   const pinned = data.all().filter((it) => it.pinned && (it.kind === 'view' || it.kind === 'page'))
     .sort((a, b) => (a.pinOrder || 0) - (b.pinOrder || 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
   if (!pinned.length) { el.innerHTML = ''; return; }
-  el.innerHTML = '<h2>Pinned</h2><div class="pins">' + pinned.map((it) => it.kind === 'view'
+  el.innerHTML = '<div class="pins">' + pinned.map((it) => it.kind === 'view'
     ? '<div class="pin-view card flat"><div data-pin-view="' + esc(it.id) + '"></div></div>'
     : '<a class="pin-page card flat" href="#p/' + esc(it.id) + '">' + icon('page') + '<span>' + esc(titleOf(it)) + '</span></a>').join('') + '</div>';
   for (const host of el.querySelectorAll('[data-pin-view]')) renderView(host, host.dataset.pinView, { compact: true, limit: 5 });

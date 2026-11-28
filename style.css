@@ -347,8 +347,7 @@ body { padding-top: calc(var(--top-h) + var(--safe-top)); padding-bottom: calc(v
 /* ============================================================
    TODAY
    ============================================================ */
-.today-head { margin: 4px 0 18px; }
-.today-head h1 { margin-bottom: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .note-line { background: var(--note); border: 1px solid var(--note-line); border-radius: 12px; padding: 9px 12px; font-size: 15px; margin-bottom: 16px; }
 .screen-note { box-sizing: border-box; width: calc(100% - 32px); max-width: 688px; margin: 16px auto 0; }
 .update-note {
@@ -367,6 +366,7 @@ body { padding-top: calc(var(--top-h) + var(--safe-top)); padding-bottom: calc(v
 .brief-sec li { padding: 5px 0; border-bottom: 1px solid var(--line-2); font-size: 15px; }
 .brief-sec li:last-child { border-bottom: 0; }
 .brief-sec a { color: var(--ink); text-decoration-color: var(--line); text-underline-offset: 3px; }
+.brief-sec a.brief-src { color: var(--ink-2); white-space: nowrap; }
 @media (min-width: 900px) { .brief-sections { grid-template-columns: 1fr 1fr; } }
 
 .pins { display: grid; gap: 14px; }
