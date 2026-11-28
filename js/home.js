@@ -1,5 +1,5 @@
 // Today: the quick look. A greeting, the latest daily brief, pinned pages
-// and views (in #dashboard) and recent pages.
+// and views (in #dashboard), and a first-page hint when there are none.
 // Ask Claude (#ask, its own screen): the box and the recent messages.
 //
 // The brief is an item of kind "brief" that Claude's morning run writes:
@@ -12,7 +12,7 @@ import { titleOf } from './model.js';
 import { BUILD } from './version.js';
 import { ask, isConnected, preparePicture, MAX_PICTURES } from './ask.js';
 import { onlineBuild, forceUpdate } from './update.js';
-import { $, esc, clock, dayAndClock, safeHref, icon, timeAgo } from './ui.js';
+import { $, esc, clock, dayAndClock, safeHref, icon } from './ui.js';
 
 const SHOW = 8;                  // past messages listed under the box
 const WATCH_MS = 15 * 60e3;      // after sending, look for a new version this long
@@ -252,12 +252,8 @@ function renderPinned() {
 }
 
 function renderRecent() {
+  // Only a first-run hint; Today no longer lists recent pages.
   const el = $('#recentPages');
-  const list = data.all('page').sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 6);
-  if (!list.length) {
-    el.innerHTML = '<h2>Pages</h2><p class="muted">No pages yet. <button type="button" class="link" data-new-page>Make your first page</button>, write anything in it, and Claude will organize it.</p>';
-    return;
-  }
-  el.innerHTML = '<h2>Recent pages</h2><ul class="recent">' + list.map((p) => '<li><a href="#p/' + esc(p.id) + '">' + icon('page') +
-    '<span class="r-title">' + esc(titleOf(p)) + '</span><span class="muted small">' + esc(timeAgo(p.updatedAt)) + '</span></a></li>').join('') + '</ul>';
+  el.innerHTML = data.all('page').length ? ''
+    : '<h2>Pages</h2><p class="muted">No pages yet. <button type="button" class="link" data-new-page>Make your first page</button>, write anything in it, and Claude will organize it.</p>';
 }
